@@ -35,3 +35,4 @@ vignettes/*.pdf
 
 # Misc data files
 *.csv
+*.rds
