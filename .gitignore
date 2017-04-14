@@ -36,3 +36,10 @@ vignettes/*.pdf
 # Misc data files
 *.csv
 *.rds
+
+# Animation output
+images/
+css/
+js/
+index.html
+

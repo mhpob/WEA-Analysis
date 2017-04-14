@@ -53,14 +53,13 @@ WEAinterp <- function(data, coordinates, res = 1){
                      data = water_qual@data[, c('reasting','rnorthing', 'median')],
                      max.dis = 600, dists.mat = dist, messages = F)
   # ML fit
-  invisible(capture.output(
-    vpar <- SpatialTools::maxlik.cov.sp(as.matrix(cbind(1,
-                                                        water_qual@data[, c('reasting','rnorthing')])),
-                                        water_qual@data[, 'median'],
-                                        coords = as.matrix(water_qual@data[, c('reasting','rnorthing')]),
-                                        sp.type = "matern", range.par = 600, error.ratio = 0.5,
-                                        D = dist, reml = T)
-  ))
+
+    vpar <- SpatialTools::maxlik.cov.sp(
+      as.matrix(cbind(1, water_qual@data[, c('reasting','rnorthing')])),
+      water_qual@data[, 'median'],
+      coords = as.matrix(water_qual@data[, c('reasting','rnorthing')]),
+      sp.type = "matern", range.par = 600, error.ratio = 0.5,
+      D = dist, reml = T, control = list(trace = 0))
 
   # Define spatial structure of prediction matrix from fitted spatial model
   V0 <- SpatialTools::cov.sp(coords = as.matrix(
@@ -99,7 +98,8 @@ rec_events <- readRDS('rec_events.rds')
 
 
 noise <- rec_events %>%
-  filter(Description == 'Average noise') %>%
+  filter(Description == 'Average noise',
+         Date.Time > '2016-11-11') %>%
   mutate(Data = as.numeric(Data),
          Data = ifelse(Data >= 300, 300, Data),
          day = lubridate::floor_date(Date.Time, unit = 'day')) %>%
@@ -107,24 +107,31 @@ noise <- rec_events %>%
   summarize(avg = mean(Data)) %>%
   as.data.frame()
 
+dates <- unique(noise$day)
+
 
 # Temperature, noise, tilt interpolation going forward?
 # Animations/plots v detections?
-data <- noise$Data
-coordinates <- matrix(c(noise$Long, noise$Lat), ncol = 2)
-res  <-  2
+library(animation)
 
-test <- WEAinterp(data, coordinates, res = res)
-test2 <- test@data
 
-# library(ggplot2)
+saveHTML({
+for (i in 1:length(dates)){
+  anim.dat <- noise[noise$day == dates[i],]
+  data <- anim.dat$avg
+  coordinates <- matrix(c(anim.dat$Long, anim.dat$Lat), ncol = 2)
 
-ggplot() +
-  geom_polygon(data = midstates, aes(x = long, y = lat, group = group),
-               fill  = 'lightgrey', color = 'black') +
-  coord_cartesian(xlim = c(485, 550), ylim = c(4230, 4257)) +
-  geom_raster(data = test2, aes(x = Var1, y = Var2, fill = value)) +
-  scale_fill_continuous(limits = c(130, 275)) +
-  geom_polygon(data = wea, aes(x = long, y = lat, group = group),
-               fill = NA, color = 'black')
+  interp.results <- WEAinterp(data, coordinates, res = 1)
+  interp.data <- interp.results@data
 
+  test <- ggplot() +
+    geom_polygon(data = midstates, aes(x = long, y = lat, group = group),
+                 fill  = 'lightgrey', color = 'black') +
+    coord_cartesian(xlim = c(485, 550), ylim = c(4230, 4257)) +
+    geom_raster(data = interp.data , aes(x = Var1, y = Var2, fill = value)) +
+    scale_fill_continuous(limits = c(150, 300)) +
+    geom_polygon(data = wea, aes(x = long, y = lat, group = group),
+                 fill = NA, color = 'black')
+
+  print(test)
+}},interval = 0.2, ani.height = 720, ani.width = 1280)
