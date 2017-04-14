@@ -1,18 +1,5 @@
 library(dplyr)
-
-rec_events <- readRDS('rec_events.rds')
-temps <- rec_events %>%
-  filter(Description == 'Average noise',
-         Date.Time == '2017-03-16 00:00:00') %>%
-  mutate(Data = as.numeric(Data)) %>%
-  as.data.frame()
-
-
-# Temperature, noise, tilt interpolation going forward?
-# Animations/plots v detections?
-data <- temps$Data
-coordinates <- matrix(c(temps$Long, temps$Lat), ncol = 2)
-res  <-  2
+library(raster)
 
 WEAinterp <- function(data, coordinates, res = 1){
   if(is.data.frame(data) == F) data <- as.data.frame(data)
@@ -68,11 +55,11 @@ WEAinterp <- function(data, coordinates, res = 1){
   # ML fit
   invisible(capture.output(
     vpar <- SpatialTools::maxlik.cov.sp(as.matrix(cbind(1,
-                     water_qual@data[, c('reasting','rnorthing')])),
-                     water_qual@data[, 'median'],
-                     coords = as.matrix(water_qual@data[, c('reasting','rnorthing')]),
-                     sp.type = "matern", range.par = 600, error.ratio = 0.5,
-                     D = dist, reml = T)
+                                                        water_qual@data[, c('reasting','rnorthing')])),
+                                        water_qual@data[, 'median'],
+                                        coords = as.matrix(water_qual@data[, c('reasting','rnorthing')]),
+                                        sp.type = "matern", range.par = 600, error.ratio = 0.5,
+                                        D = dist, reml = T)
   ))
 
   # Define spatial structure of prediction matrix from fitted spatial model
@@ -86,22 +73,58 @@ WEAinterp <- function(data, coordinates, res = 1){
 
   # Apply spatial structure nd model to predict values
   krige <- SpatialTools::krige.uk(water_qual@data[, 'median'],
-                           V = V0$V, Vop = V0$Vop, Vp = V0$Vp,
-                           X = as.matrix(cbind(1,
-                               water_qual@data[, c('reasting','rnorthing')])),
-                           Xp = as.matrix(cbind(1, grid@data[,1:2])),
-                           nsim = 0)
+                                  V = V0$V, Vop = V0$Vop, Vp = V0$Vp,
+                                  X = as.matrix(cbind(1,
+                                                      water_qual@data[, c('reasting','rnorthing')])),
+                                  Xp = as.matrix(cbind(1, grid@data[,1:2])),
+                                  nsim = 0)
 
   grid[['value']] <- krige$pred
   grid[['se']] <- krige$mspe
   grid
 }
 
+midstates <- shapefile('p:/obrien/midatlantic/matl_states_land.shp')
+wea <- shapefile('c:/users/secor/desktop/gis products/md mammals/wind_planning_areas/Wind_Planning_Areas_06_20_2014.shp')
+midstates <- sp::spTransform(midstates,
+                             sp::CRS('+proj=utm +zone=18 +datum=NAD83 +units=km'))
+wea <- sp::spTransform(wea,
+                       sp::CRS('+proj=utm +zone=18 +datum=NAD83 +units=km'))
+library(ggplot2)
+midstates <- fortify(midstates)
+wea <- fortify(wea)
 
-test <- WEAinterp(data, coordinates)
+rec_events <- readRDS('rec_events.rds')
+
+
+
+noise <- rec_events %>%
+  filter(Description == 'Average noise') %>%
+  mutate(Data = as.numeric(Data),
+         Data = ifelse(Data >= 300, 300, Data),
+         day = lubridate::floor_date(Date.Time, unit = 'day')) %>%
+  group_by(day, Lat, Long) %>%
+  summarize(avg = mean(Data)) %>%
+  as.data.frame()
+
+
+# Temperature, noise, tilt interpolation going forward?
+# Animations/plots v detections?
+data <- noise$Data
+coordinates <- matrix(c(noise$Long, noise$Lat), ncol = 2)
+res  <-  2
+
+test <- WEAinterp(data, coordinates, res = res)
 test2 <- test@data
 
 # library(ggplot2)
 
-ggplot() + geom_raster(data = test2, aes(x = Var1, y = Var2, fill = value)) +
-  scale_fill_continuous(limits = c(4.1, 16.5))
+ggplot() +
+  geom_polygon(data = midstates, aes(x = long, y = lat, group = group),
+               fill  = 'lightgrey', color = 'black') +
+  coord_cartesian(xlim = c(485, 550), ylim = c(4230, 4257)) +
+  geom_raster(data = test2, aes(x = Var1, y = Var2, fill = value)) +
+  scale_fill_continuous(limits = c(130, 275)) +
+  geom_polygon(data = wea, aes(x = long, y = lat, group = group),
+               fill = NA, color = 'black')
+
