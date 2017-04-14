@@ -1,0 +1,107 @@
+library(dplyr)
+
+rec_events <- readRDS('rec_events.rds')
+temps <- rec_events %>%
+  filter(Description == 'Average noise',
+         Date.Time == '2017-03-16 00:00:00') %>%
+  mutate(Data = as.numeric(Data)) %>%
+  as.data.frame()
+
+
+# Temperature, noise, tilt interpolation going forward?
+# Animations/plots v detections?
+data <- temps$Data
+coordinates <- matrix(c(temps$Long, temps$Lat), ncol = 2)
+res  <-  2
+
+WEAinterp <- function(data, coordinates, res = 1){
+  if(is.data.frame(data) == F) data <- as.data.frame(data)
+
+  water_qual <- sp::SpatialPointsDataFrame(coords = coordinates,
+                                           data = data,
+                                           proj4string = sp::CRS('+proj=longlat'))
+  water_qual <- sp::spTransform(water_qual,
+                                sp::CRS('+proj=utm +zone=18 +datum=NAD83 +units=km'))
+  water_qual@data <- water_qual@data %>%
+    dplyr::mutate(reasting = res * round(water_qual@coords[, 1] / res),
+                  rnorthing = res * round(water_qual@coords[, 2] / res)) %>%
+    dplyr::group_by(reasting, rnorthing) %>%
+    dplyr::summarize(median = median(data)) %>%
+    as.data.frame()
+  water_qual@coords <- as.matrix(water_qual@data[, c('reasting','rnorthing')])
+
+
+  # Make grid to interpolate over, make into spatial object with same
+  # projection as shapefile. Use SpatialPixels to more-easily convert to
+  # raster later.
+  grid <- expand.grid(
+    seq(min(water_qual@data$reasting), max(water_qual@data$reasting), res),
+    seq(min(water_qual@data$rnorthing), max(water_qual@data$rnorthing), res))
+  grid <- sp::SpatialPixelsDataFrame(points = grid[, 1:2], data = grid,
+                                     tolerance = 0.99,
+                                     proj4string =
+                                       sp::CRS('+proj=utm +zone=18 +datum=NAD83 +units=km'))
+
+  wea.ras <- raster::raster(grid, layer = 1)
+
+  ## Create transition matrix that represets a pairwise product of
+  ## cells' conductance
+  wea.trans <- gdistance::transition(wea.ras, function(x) x[1] * x[2], 8)
+  wea.trans <- gdistance::geoCorrection(wea.trans)
+
+  dist <- gdistance::costDistance(wea.trans, water_qual)
+  dist <- as.matrix(as.dist(dist, diag = T, upper = T))
+
+  ## Interpolation steps
+  # Use transition matrix to calculate corrected distances (as the fish swim)
+  pred.dist <- gdistance::costDistance(wea.trans, grid)
+  pred.dist <- as.matrix(as.dist(pred.dist, diag = TRUE, upper = TRUE))
+
+  # Calculate distances between observed and predicted values
+  op.dist <- gdistance::costDistance(wea.trans, water_qual, grid)
+  op.dist <- as.matrix(op.dist, diag = TRUE, upper = TRUE)
+
+  # Fit geostatistical model for the data
+  vg <- geoR::variog(coords = water_qual@data[, c('reasting','rnorthing')],
+                     data = water_qual@data[, c('reasting','rnorthing', 'median')],
+                     max.dis = 600, dists.mat = dist, messages = F)
+  # ML fit
+  invisible(capture.output(
+    vpar <- SpatialTools::maxlik.cov.sp(as.matrix(cbind(1,
+                     water_qual@data[, c('reasting','rnorthing')])),
+                     water_qual@data[, 'median'],
+                     coords = as.matrix(water_qual@data[, c('reasting','rnorthing')]),
+                     sp.type = "matern", range.par = 600, error.ratio = 0.5,
+                     D = dist, reml = T)
+  ))
+
+  # Define spatial structure of prediction matrix from fitted spatial model
+  V0 <- SpatialTools::cov.sp(coords = as.matrix(
+    water_qual@data[, c('reasting','rnorthing')]),
+    sp.type = "matern", sp.par = vpar$sp.par,
+    error.var = vpar$error.var, smoothness = vpar$smoothness,
+    finescale.var = 0,
+    pcoords = as.matrix(grid@data[,1:2]),
+    D = dist, Dp = pred.dist, Dop = op.dist)
+
+  # Apply spatial structure nd model to predict values
+  krige <- SpatialTools::krige.uk(water_qual@data[, 'median'],
+                           V = V0$V, Vop = V0$Vop, Vp = V0$Vp,
+                           X = as.matrix(cbind(1,
+                               water_qual@data[, c('reasting','rnorthing')])),
+                           Xp = as.matrix(cbind(1, grid@data[,1:2])),
+                           nsim = 0)
+
+  grid[['value']] <- krige$pred
+  grid[['se']] <- krige$mspe
+  grid
+}
+
+
+test <- WEAinterp(data, coordinates)
+test2 <- test@data
+
+# library(ggplot2)
+
+ggplot() + geom_raster(data = test2, aes(x = Var1, y = Var2, fill = value)) +
+  scale_fill_continuous(limits = c(4.1, 16.5))
