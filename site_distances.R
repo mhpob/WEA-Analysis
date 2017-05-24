@@ -1,6 +1,7 @@
 library(gdistance)
 
-sites <- read.csv('p:/obrien/biotelemetry/md wea habitat/proposal/sites.csv')
+sites <- read.csv('p:/obrien/biotelemetry/md wea habitat/wea-analysis/sites.csv')
+sites <- sites[sites$Type %in% c('Actual', ''),]
 row.names(sites) <- sites$ID
 sites <- sites[, c(3, 2)]
 
@@ -12,8 +13,8 @@ ras.back <- raster(extent(-75.2, -74.4, 38.25, 38.45),
                   crs = proj4string(midstates))
 ras.water <- mask(ras.back, midstates, inverse = T)
 
-plot(ras.water)
-points(sites$long, sites$lat)
+# plot(ras.water)
+# points(sites$long, sites$lat)
 
 trans16 <- transition(ras.water, transitionFunction = function(x){1}, 16)
 geo16 <- geoCorrection(trans16, type = 'c')
@@ -45,5 +46,7 @@ lc.dist <- function (trans, loc, res = c("dist", "path")){
 distances <- lc.dist(geo16, sites, res = 'dist')
 # Convert km to nautical miles
 distances <- 0.5399568 * distances
-# Transit times (min) @ 19 kt
-transit <- round(distances / 19 * 60)
+# Transit times (min) @ 19 kt (Carson)
+# transit <- round(distances / 19 * 60)
+# Transit times (min) @ 7 kt (Sea born)
+transit <- round(distances / 7 * 60)
