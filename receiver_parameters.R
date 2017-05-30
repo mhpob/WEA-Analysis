@@ -27,3 +27,32 @@ j$Location <- ifelse(cal('N'), 'North',
 
 ggplot(data=j,aes(x=Date.Time,y=Data,group=Location,colour=Location))+
   geom_line()+geom_point()
+
+#Noise
+k <- filter(rec,Description=="Average noise")
+k$Data<-as.numeric(k$Data)
+ggplot(data=k,aes(x=Date.Time,y=Data,group=Site,colour=Site))+
+  geom_line()+geom_point()
+
+#Aggregate by date
+noise <- rec %>%
+  filter(Description == 'Average noise') %>%
+  mutate(Data = as.numeric(Data),
+         day = lubridate::floor_date(Date.Time, unit = 'day')) %>%
+  group_by(day, Site, Lat, Long) %>%
+  summarize(avg = mean(Data)) %>%
+  as.data.frame()
+
+gal <- function(part){grepl(part, noise[, 'Site'])}
+noise$Array <- ifelse(gal('A'), 'Array',
+               ifelse(gal('O'), 'Outer','Inner'))
+
+ggplot(data=noise,aes(x=day,y=avg,group=Array,colour=Array))+
+  geom_line()+geom_point()
+
+sup <- function(part){grepl(part, noise[, 'Site'])}
+noise$Location <- ifelse(sup('N'), 'North',
+                  ifelse(sup('S'), 'South','Middle'))
+
+ggplot(data=noise,aes(x=day,y=avg,group=Location,colour=Location))+
+  geom_line()+geom_point()
