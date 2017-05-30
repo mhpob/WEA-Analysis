@@ -10,8 +10,8 @@ j <- filter(rec,Description=="Average temperature")
 class(j$Data)
 j$Data<-as.numeric(j$Data)
 hist(j$Data)
-ggplot(data=j,aes(x=Date.Time,y=Data,group=Site,colour=Site))+geom_line()+
-  geom_point()
+ggplot(data=j,aes(x=Date.Time,y=Data,group=Site,colour=Site))+
+  geom_line()+geom_point()
 
 #Plot Temp by Site/Location
 cal <- function(part){grepl(part, j[, 'Site'])}
