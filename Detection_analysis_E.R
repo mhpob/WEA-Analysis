@@ -1,11 +1,6 @@
 library(TelemetryR); library(dplyr)
 dec <- vemsort('p:/obrien/biotelemetry/detections/offshore MD/fish migration')
 
-#number unique fish detected, per station
-n_dec_all <- dec %>%
-  group_by(station) %>%
-  summarize(a = n_distinct(transmitter))
-
 #join ACT data, tidy data frame
 load('p:/obrien/randomr/ACTall.rda')
 species <- left_join(data.frame(dec), ACTall,
@@ -26,3 +21,23 @@ detects$Array <- ifelse(cal('A'), 'Array',
 #new explorations
 ggplot(data=detects, aes(x=Common.Name)) +
     geom_bar(stat="count")
+
+#V-Track experiments, just striped bass
+#Data into V-Track format
+library(VTrack)
+
+bass <- filter(detects,Common.Name=="Striped bass")
+vbass <- subset(bass,select=c(1,2,3,4))
+vbass <- vbass[c(1,3,2,4)]
+names(vbass) <- c("DATETIME","TRANSMITTERID","RECEIVERID","STATIONNAME")
+vbass$TRANSMITTERID <- do.call(rbind,strsplit(as.character(vbass$TRANSMITTERID), split="-"))[,3]
+
+#V-Track Points and Distance Matrix
+
+weaArray <- unique(bass[,c("station","lat","long")])
+names(weaArray) <- c("LOCATION","LATITUDE","LONGITUDE")
+weaArray$RADIUS <- 0
+row.names(weaArray) <- NULL
+plot(weaArray$LONGITUDE, weaArray$LATITUDE)
+
+#SB WEA filtering, movement analysis
