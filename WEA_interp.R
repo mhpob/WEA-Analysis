@@ -109,6 +109,15 @@ noise <- rec_events %>%
 
 dates <- unique(noise$day)
 
+temperature <- rec_events %>%
+  filter(Description == 'Average temperature',
+         Date.Time > '2016-11-11') %>%
+  mutate(Data = as.numeric(Data),
+         day = lubridate::floor_date(Date.Time, unit = 'day')) %>%
+  group_by(day, Lat, Long) %>%
+  summarize(avg = mean(Data)) %>%
+  as.data.frame()
+
 
 # Temperature, noise, tilt interpolation going forward?
 # Animations/plots v detections?
@@ -117,7 +126,7 @@ library(animation)
 
 saveHTML({
 for (i in 1:length(dates)){
-  anim.dat <- noise[noise$day == dates[i],]
+  anim.dat <- temperature[temperature$day == dates[i],]
   data <- anim.dat$avg
   coordinates <- matrix(c(anim.dat$Long, anim.dat$Lat), ncol = 2)
 
@@ -127,11 +136,12 @@ for (i in 1:length(dates)){
   test <- ggplot() +
     geom_polygon(data = midstates, aes(x = long, y = lat, group = group),
                  fill  = 'lightgrey', color = 'black') +
-    coord_cartesian(xlim = c(485, 550), ylim = c(4230, 4257)) +
+    coord_cartesian(xlim = c(490, 545), ylim = c(4230, 4257)) +
     geom_raster(data = interp.data , aes(x = Var1, y = Var2, fill = value)) +
-    scale_fill_continuous(limits = c(150, 300)) +
+    scale_fill_continuous(limits = c(4, 17)) +
+    annotate('text', label = as.Date(dates[i]), x = 540, y = 4255) +
     geom_polygon(data = wea, aes(x = long, y = lat, group = group),
                  fill = NA, color = 'black')
 
   print(test)
-}},interval = 0.2, ani.height = 720, ani.width = 1280)
+}}, interval = 0.2, ani.height = 720, ani.width = 1280)
