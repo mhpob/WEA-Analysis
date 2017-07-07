@@ -58,13 +58,14 @@ rec.data <- rec.data %>%
   summarize(avg.temp = mean(Data))
 
 temp_ecdfplot <- function(array, spec.data){
-  temp.data <- rec.data[rec.data$array == 'Outer',]
+  temp.data <- rec.data[rec.data$array == array,]
 
-  par(mar = c(5, 4, 4, 4) + 0.1)
+  par(mar = c(4, 4, 1, 4) + 0.1)
   plot(x = temp.data$Date.Time,
        y = temp.data$avg.temp,
        xlim = c(ymd_hms('20161111 19:00:00'),
                 ymd_hms('20170328 21:00:00')),
+       ylim = c(4.5, 16.5),
        xaxt = 'n',
        xlab = 'Date',
        ylab = 'Temperature (C)',
@@ -82,7 +83,7 @@ temp_ecdfplot <- function(array, spec.data){
     'Fraction detected in', array, 'array'))), col = 'blue')
 }
 
-temp_ecdfplot(array = 'Inner', spec.data = 'sturg')
+temp_ecdfplot(array = 'Outer', spec.data = 'striped')
 
 
 ## Same thing, but for month/array combinations ----
