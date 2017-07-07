@@ -18,9 +18,19 @@ AS <- filter(species, grepl('stur', Common.Name, ignore.case = T))
 AS <- split(AS, AS$array)
 AS <- lapply(AS, function(x){ecdf(x$min)})
 
-plot(lubridate::as_datetime(knots(AS[[3]])), AS[[3]](knots(AS[[3]])),
-     ylim = c(0,1))
-lines(lubridate::as_datetime(knots(AS[[3]])), AS[[3]](knots(AS[[3]])), type = 's')
+det_ecdfplot <- function(species = 'AS', array){
+  plot(x = lubridate::as_datetime(knots(AS[[array]])),
+       y = AS[[array]](knots(AS[[array]])),
+       ylim = c(0, 1),
+       xlim = c(lubridate::ymd_hms('20161111 19:00:00'),
+                lubridate::ymd_hms('20170328 21:00:00')),
+       xlab = 'Date',
+       ylab = array,
+       pch = 16)
+  lines(x = lubridate::as_datetime(knots(AS[[array]])),
+        y = AS[[array]](knots(AS[[array]])),
+        type = 's')
+}
 
 
 
