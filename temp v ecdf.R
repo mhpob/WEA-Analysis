@@ -15,6 +15,13 @@ species <- left_join(data.frame(dets), ACTactive,
   summarize(min = min(date.utc))
 
 AS <- filter(species, grepl('stur', Common.Name, ignore.case = T))
+AS <- split(AS, AS$array)
+AS <- lapply(AS, function(x){ecdf(x$min)})
+
+plot(lubridate::as_datetime(knots(AS[[3]])), AS[[3]](knots(AS[[3]])),
+     ylim = c(0,1))
+lines(lubridate::as_datetime(knots(AS[[3]])), AS[[3]](knots(AS[[3]])), type = 's')
+
 
 
 ## Same thing, but for month/array combinations ----
