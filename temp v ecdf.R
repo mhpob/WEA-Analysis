@@ -27,7 +27,10 @@ det_ecdfplot <- function(spec.plot, array, ylab = NULL, ...){
        xlim = c(ymd_hms('20161111 19:00:00'),
                 ymd_hms('20170328 21:00:00')),
        xlab = 'Date',
-       ylab = ifelse(is.null(ylab), array, ylab),
+       ylab = ifelse(is.null(ylab),
+                     eval(expression(paste(
+                       'Fraction detected in', array, 'array'))),
+                     ylab),
        pch = 16, ...)
 
   # This is just to stop lines() from throwing warnings when we specify
@@ -40,7 +43,7 @@ det_ecdfplot <- function(spec.plot, array, ylab = NULL, ...){
         type = 's', ...)
 }
 
-# det_ecdfplot(spec.plot = 'sturg', array = 'Middle')
+det_ecdfplot(spec.plot = 'sturg', array = 'Middle')
 
 ## Bring in temperature data ----
 rec.data <- readRDS("rec_events.rds")
@@ -75,7 +78,8 @@ temp_ecdfplot <- function(array, spec.data){
   det_ecdfplot(spec.plot = spec.data, array = array, ylab = '', axes = F,
                col = 'blue')
   axis(4, las = 0.5, col.axis = 'blue')
-  mtext(side = 4, line = 2, array, col = 'blue')
+  mtext(side = 4, line = 2, text = eval(expression(paste(
+    'Fraction detected in', array, 'array'))), col = 'blue')
 }
 
 temp_ecdfplot(array = 'Inner', spec.data = 'sturg')
