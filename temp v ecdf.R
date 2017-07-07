@@ -1,4 +1,4 @@
-library(TelemetryR); library(dplyr)
+library(TelemetryR); library(lubridate); library(dplyr)
 dets <- vemsort('p:/obrien/biotelemetry/detections/offshore md/fish migration')
 dets <- mutate(dets,
                array = ifelse(grepl('I', station), 'Inner',
@@ -14,28 +14,58 @@ species <- left_join(data.frame(dets), ACTactive,
   distinct(array, transmitter, .keep_all = T) %>%
   summarize(min = min(date.utc))
 
-det_ecdfplot <- function(spec.plot, array){
+## Create ECDF plot of detection returns, per array ----
+det_ecdfplot <- function(spec.plot, array, ...){
 
   data <- filter(species, grepl(spec.plot, Common.Name, ignore.case = T))
   data <- split(data, data$array)
   data <- lapply(data, function(x){ecdf(x$min)})
 
-  plot(x = lubridate::as_datetime(knots(data[[array]])),
+  plot(x = as_datetime(knots(data[[array]])),
        y = data[[array]](knots(data[[array]])),
        ylim = c(0, 1),
-       xlim = c(lubridate::ymd_hms('20161111 19:00:00'),
-                lubridate::ymd_hms('20170328 21:00:00')),
+       xlim = c(ymd_hms('20161111 19:00:00'),
+                ymd_hms('20170328 21:00:00')),
        xlab = 'Date',
        ylab = array,
-       pch = 16)
-  lines(x = lubridate::as_datetime(knots(data[[array]])),
+       pch = 16, ...)
+  lines(x = as_datetime(knots(data[[array]])),
         y = data[[array]](knots(data[[array]])),
-        type = 's')
+        type = 's', ...)
 }
 
 det_ecdfplot(spec.plot = 'sturg', array = 'Array')
 det_ecdfplot(spec.plot = 'sturg', array = 'Outer')
-det_ecdfplot(spec.plot = 'sturg', array = 'Inner')
+det_ecdfplot(spec.plot = 'sturg', array = 'Inner', col = 'blue')
+
+## Bring in temperature data ----
+rec.data <- readRDS("rec_events.rds")
+rec.data <- rec.data %>%
+  filter(Description == 'Average temperature',
+         Date.Time > ymd_hms('20161111 19:00:00')) %>%
+  mutate(array = ifelse(grepl('I', Site), 'Inner',
+                        ifelse(grepl('O', Site), 'Outer',
+                               'Array')),
+         Data = as.numeric(Data)) %>%
+  group_by(Date.Time, array) %>%
+  summarize(avg.temp = mean(Data))
+
+temp_ecdfplot <- function(array, spec.data, ...){
+  temp.data <- rec.data[rec.data$array == array,]
+
+  plot(x = temp.data$Date.Time,
+       y = temp.data$avg.temp,
+       # ylim = c(0, 1),
+       xlim = c(ymd_hms('20161111 19:00:00'),
+                ymd_hms('20170328 21:00:00')),
+       xlab = 'Date',
+       ylab = 'Temperature (C)',
+       type = 'l')
+  par(new = T)
+  det_ecdf <- det_ecdfplot(spec.plot = 'sturg', array = 'Array', ...)
+}
+
+
 
 ## Same thing, but for month/array combinations ----
 species_mo <- species %>%
