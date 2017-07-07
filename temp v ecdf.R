@@ -3,7 +3,7 @@ dets <- vemsort('p:/obrien/biotelemetry/detections/offshore md/fish migration')
 dets <- mutate(dets,
                array = ifelse(grepl('I', station), 'Inner',
                               ifelse(grepl('O', station), 'Outer',
-                              'Array')))
+                              'Middle')))
 
 load('p:/obrien/randomr/ACTactive.rda')
 species <- left_join(data.frame(dets), ACTactive,
@@ -15,7 +15,7 @@ species <- left_join(data.frame(dets), ACTactive,
   summarize(min = min(date.utc))
 
 ## Create ECDF plot of detection returns, per array ----
-det_ecdfplot <- function(spec.plot, array, ...){
+det_ecdfplot <- function(spec.plot, array, ylab = NULL, ...){
 
   data <- filter(species, grepl(spec.plot, Common.Name, ignore.case = T))
   data <- split(data, data$array)
@@ -27,16 +27,20 @@ det_ecdfplot <- function(spec.plot, array, ...){
        xlim = c(ymd_hms('20161111 19:00:00'),
                 ymd_hms('20170328 21:00:00')),
        xlab = 'Date',
-       ylab = array,
+       ylab = ifelse(is.null(ylab), array, ylab),
        pch = 16, ...)
-  lines(x = as_datetime(knots(data[[array]])),
+
+  # This is just to stop lines() from throwing warnings when we specify
+  # graphical parameters it doesn't like.
+  LLines <- function(..., log, axes, frame.plot, panel.first, panel.last) {
+    lines(...)
+  }
+  LLines(x = as_datetime(knots(data[[array]])),
         y = data[[array]](knots(data[[array]])),
         type = 's', ...)
 }
 
-det_ecdfplot(spec.plot = 'sturg', array = 'Array')
-det_ecdfplot(spec.plot = 'sturg', array = 'Outer')
-det_ecdfplot(spec.plot = 'sturg', array = 'Inner', col = 'blue')
+# det_ecdfplot(spec.plot = 'sturg', array = 'Middle')
 
 ## Bring in temperature data ----
 rec.data <- readRDS("rec_events.rds")
@@ -45,26 +49,36 @@ rec.data <- rec.data %>%
          Date.Time > ymd_hms('20161111 19:00:00')) %>%
   mutate(array = ifelse(grepl('I', Site), 'Inner',
                         ifelse(grepl('O', Site), 'Outer',
-                               'Array')),
+                               'Middle')),
          Data = as.numeric(Data)) %>%
   group_by(Date.Time, array) %>%
   summarize(avg.temp = mean(Data))
 
-temp_ecdfplot <- function(array, spec.data, ...){
-  temp.data <- rec.data[rec.data$array == array,]
+temp_ecdfplot <- function(array, spec.data){
+  temp.data <- rec.data[rec.data$array == 'Outer',]
 
+  par(mar = c(5, 4, 4, 4) + 0.1)
   plot(x = temp.data$Date.Time,
        y = temp.data$avg.temp,
-       # ylim = c(0, 1),
        xlim = c(ymd_hms('20161111 19:00:00'),
                 ymd_hms('20170328 21:00:00')),
+       xaxt = 'n',
        xlab = 'Date',
        ylab = 'Temperature (C)',
-       type = 'l')
+       type = 'l',
+       lwd = 2)
+  axis.POSIXct(1, at = seq(ymd('2016-11-11'),
+                        ymd('2017-03-28'),
+                        by = 'month'), format = '%m-%Y')
+
   par(new = T)
-  det_ecdf <- det_ecdfplot(spec.plot = 'sturg', array = 'Array', ...)
+  det_ecdfplot(spec.plot = spec.data, array = array, ylab = '', axes = F,
+               col = 'blue')
+  axis(4, las = 0.5, col.axis = 'blue')
+  mtext(side = 4, line = 2, array, col = 'blue')
 }
 
+temp_ecdfplot(array = 'Inner', spec.data = 'sturg')
 
 
 ## Same thing, but for month/array combinations ----
