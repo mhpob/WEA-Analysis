@@ -14,25 +14,28 @@ species <- left_join(data.frame(dets), ACTactive,
   distinct(array, transmitter, .keep_all = T) %>%
   summarize(min = min(date.utc))
 
-AS <- filter(species, grepl('stur', Common.Name, ignore.case = T))
-AS <- split(AS, AS$array)
-AS <- lapply(AS, function(x){ecdf(x$min)})
+det_ecdfplot <- function(spec.plot, array){
 
-det_ecdfplot <- function(species = 'AS', array){
-  plot(x = lubridate::as_datetime(knots(AS[[array]])),
-       y = AS[[array]](knots(AS[[array]])),
+  data <- filter(species, grepl(spec.plot, Common.Name, ignore.case = T))
+  data <- split(data, data$array)
+  data <- lapply(data, function(x){ecdf(x$min)})
+
+  plot(x = lubridate::as_datetime(knots(data[[array]])),
+       y = data[[array]](knots(data[[array]])),
        ylim = c(0, 1),
        xlim = c(lubridate::ymd_hms('20161111 19:00:00'),
                 lubridate::ymd_hms('20170328 21:00:00')),
        xlab = 'Date',
        ylab = array,
        pch = 16)
-  lines(x = lubridate::as_datetime(knots(AS[[array]])),
-        y = AS[[array]](knots(AS[[array]])),
+  lines(x = lubridate::as_datetime(knots(data[[array]])),
+        y = data[[array]](knots(data[[array]])),
         type = 's')
 }
 
-
+det_ecdfplot(spec.plot = 'sturg', array = 'Array')
+det_ecdfplot(spec.plot = 'sturg', array = 'Outer')
+det_ecdfplot(spec.plot = 'sturg', array = 'Inner')
 
 ## Same thing, but for month/array combinations ----
 species_mo <- species %>%
