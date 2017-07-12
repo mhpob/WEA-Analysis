@@ -3,13 +3,14 @@ dets <- vemsort('p:/obrien/biotelemetry/detections/offshore md/fish migration')
 dets <- mutate(dets,
                array = ifelse(grepl('I', station), 'Inner',
                               ifelse(grepl('O', station), 'Outer',
-                              'Middle')))
+                              'MD WEA')))
 
 load('p:/obrien/randomr/ACTactive.rda')
 species <- left_join(data.frame(dets), ACTactive,
                      by = c('transmitter' = 'Tag.ID.Code.Standard')) %>%
   mutate(Common.Name = ifelse(grepl('striped', Common.Name, ignore.case = T),
-                              'Striped bass', Common.Name)) %>%
+                              'Striped bass', Common.Name))
+species_all <- species %>%
   group_by(array, Common.Name, transmitter) %>%
   distinct(array, transmitter, .keep_all = T) %>%
   summarize(min = min(date.utc))
@@ -17,7 +18,7 @@ species <- left_join(data.frame(dets), ACTactive,
 ## Create ECDF plot of detection returns, per array ----
 det_ecdfplot <- function(spec.plot, array, ylab = NULL, ...){
 
-  data <- filter(species, grepl(spec.plot, Common.Name, ignore.case = T))
+  data <- filter(species_all, grepl(spec.plot, Common.Name, ignore.case = T))
   data <- split(data, data$array)
   data <- lapply(data, function(x){ecdf(x$min)})
 
@@ -43,7 +44,7 @@ det_ecdfplot <- function(spec.plot, array, ylab = NULL, ...){
         type = 's', ...)
 }
 
-det_ecdfplot(spec.plot = 'sturg', array = 'Middle')
+det_ecdfplot(spec.plot = 'sturg', array = 'MD WEA')
 
 ## Bring in temperature data ----
 rec.data <- readRDS("rec_events.rds")
@@ -52,7 +53,7 @@ rec.data <- rec.data %>%
          Date.Time > ymd_hms('20161111 19:00:00')) %>%
   mutate(array = ifelse(grepl('I', Site), 'Inner',
                         ifelse(grepl('O', Site), 'Outer',
-                               'Middle')),
+                               'MD WEA')),
          Data = as.numeric(Data)) %>%
   group_by(Date.Time, array) %>%
   summarize(avg.temp = mean(Data))
@@ -83,7 +84,7 @@ temp_ecdfplot <- function(array, spec.data){
     'Fraction detected in', array, 'array'))), col = 'blue')
 }
 
-temp_ecdfplot(array = 'Outer', spec.data = 'striped')
+temp_ecdfplot(array = 'MD WEA', spec.data = 'sturg')
 
 
 ## Same thing, but for month/array combinations ----
@@ -105,7 +106,7 @@ AS_mo <- AS_mo[lapply(AS_mo, function(x){dim(x)[1]}) > 0]
 
 # Apply ecdf to list
 AS_mo <- lapply(AS_mo, function(x){ecdf(x$min)})
-# plot(AS_mo[[2]], verticals = T)
+plot(AS_mo[[1]], verticals = T)
 
 SB <- filter(species_mo, grepl('striped', Common.Name, ignore.case = T))
 
