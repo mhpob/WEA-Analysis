@@ -1,5 +1,6 @@
 library(readxl)
 sites <- read_excel('p:/obrien/biotelemetry/md wea habitat/data/vr2ar deployment_recovery log.xlsx')
+sites <- sites[grepl('2017', sites$Date),]
 
 library(raster)
 midstates <- shapefile('p:/obrien/midatlantic/matl_states_land.shp')
