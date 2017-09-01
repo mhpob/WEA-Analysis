@@ -208,6 +208,8 @@ all.spec.counts <- dec %>%
   distinct(transmitter, receiver) %>%
   count(transmitter)
 
+# dim(all.spec.counts[all.spec.counts$n >= 2,])
+
 ggplot() +
   geom_histogram(data = all.spec.counts, aes(x = n), binwidth = 1,
                  color = 'black',

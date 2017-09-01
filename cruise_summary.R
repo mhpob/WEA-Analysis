@@ -3,9 +3,8 @@ dets <- vemsort('p:/obrien/biotelemetry/detections/offshore md/fish migration')
 
 # levels(factor(dets$transmitter))
 
-# Number of unique fish detected, per station
+# Number of unique fish detected
 n_dets_all <- dets %>%
-  group_by(station) %>%
   summarize(a = n_distinct(transmitter))
 
 # n_dets_201605 <- dets %>%
@@ -21,8 +20,8 @@ species <- left_join(data.frame(dets), ACTactive,
   mutate(Common.Name = ifelse(grepl('striped', Common.Name, ignore.case = T),
                               'Striped bass', Common.Name))
 
-n_spec_all <- species %>% group_by(station, Common.Name) %>%
-  distinct(station, transmitter, .keep_all = T) %>%
+n_spec_all <- species %>% group_by(Common.Name) %>%
+  distinct(transmitter, .keep_all = T) %>%
   summarize(n = n())
 
 # Note that the following were double-tagged by K. Dunton:
