@@ -47,6 +47,6 @@ distances <- lc.dist(geo16, sites, res = 'dist')
 # Convert km to nautical miles
 distances <- 0.5399568 * distances
 # Transit times (min) @ 19 kt (Carson)
-# transit <- round(distances / 19 * 60)
+transit <- round(distances / 19 * 60)
 # Transit times (min) @ 7 kt (Sea born)
-transit <- round(distances / 7 * 60)
+# transit <- round(distances / 7 * 60)
