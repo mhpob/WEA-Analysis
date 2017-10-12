@@ -1,6 +1,6 @@
 library(gdistance)
 
-sites <- read.csv('p:/obrien/biotelemetry/md wea habitat/wea-analysis/sites.csv')
+sites <- read.csv('p:/obrien/biotelemetry/md wea habitat/wea-analysis/data and imports/sites.csv')
 sites <- sites[sites$Type %in% c('Actual', ''),]
 row.names(sites) <- sites$ID
 sites <- sites[, c(3, 2)]

@@ -1,7 +1,7 @@
 library(ggplot2); library(lubridate); library(dplyr)
 
 # Noise & tilt munging ----
-rec <- readRDS("rec_events.rds")
+rec <- readRDS("data and imports/rec_events.rds")
 
 noise_tilt <- rec %>%
   filter(Description %in% c('Average noise', 'Tilt angle',
@@ -26,7 +26,7 @@ agg_noise_tilt <- aggregate(avg ~ hr12 + Description + Array,
   select(-Array)
 
 # Wind munging ----
-ocmd.wind <- readRDS("ocmd_wind.rds")
+ocmd.wind <- readRDS("data and imports/ocmd_wind.rds")
 
 hr12.wind <- ocmd.wind %>%
   filter(date.time >= '2016-11-13',

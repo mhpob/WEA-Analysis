@@ -36,7 +36,7 @@ ocmd.wind <- ocmd.wind %>%
   filter(wspd != 99,
          date.time >= '2016-11-01')
 
-# saveRDS(ocmd.wind, file = 'ocmd_wind.rds')
+# saveRDS(ocmd.wind, file = 'data and imports/ocmd_wind.rds')
 
 # hrly.wind <- ocmd.wind %>%
 #   mutate(hr.agg = floor_date(date.time, unit = 'hour')) %>%

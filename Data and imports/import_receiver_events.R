@@ -36,4 +36,4 @@ names(rec_events) <- c('Date.Time', 'Receiver', 'Description', 'Data', 'Units',
 
 rec_events <- rec_events[, names(rec_events) != 'C.Date']
 
-saveRDS(rec_events, file = 'rec_events.rds')
+saveRDS(rec_events, file = 'data and imports/rec_events.rds')

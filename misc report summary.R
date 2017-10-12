@@ -1,6 +1,6 @@
 library(lubridate); library(dplyr)
 
-rec.data <- readRDS("rec_events.rds")
+rec.data <- readRDS("data and imports/rec_events.rds")
 
 # Temperature summary
 wt.data <- rec.data %>%

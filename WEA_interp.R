@@ -93,7 +93,7 @@ library(ggplot2)
 midstates <- fortify(midstates)
 wea <- fortify(wea)
 
-rec_events <- readRDS('rec_events.rds')
+rec_events <- readRDS('data and imports/rec_events.rds')
 
 
 

@@ -47,7 +47,7 @@ det_ecdfplot <- function(spec.plot, array, ylab = NULL, ...){
 det_ecdfplot(spec.plot = 'sturg', array = 'MD WEA')
 
 ## Bring in temperature data ----
-rec.data <- readRDS("rec_events.rds")
+rec.data <- readRDS("data and imports/rec_events.rds")
 rec.data <- rec.data %>%
   filter(Description == 'Average temperature',
          Date.Time > ymd_hms('20161111 19:00:00')) %>%
