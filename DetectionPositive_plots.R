@@ -67,24 +67,32 @@ base_map +
              aes(x = `Dep Long_DD`, y = `Dep Lat_DD`, size = fish, color = DP)) +
   facet_wrap(~ season, ncol = 2) +
   scale_color_gradient(low = 'black', high = 'red') +
-  labs(title = 'Atlantic Sturgeon', color = 'DPD', size = '# Fish') +
+  labs(title = 'Atlantic sturgeon', color = 'DPD', size = '# Fish') +
   guides(size = guide_legend(order = 1)) +
   theme_bw()
+ggsave('AS_DPD.jpeg', path = 'p:/rothermel/boemfinal/DPD', dpi = 300,
+       width = 6.5, height = 4, units = 'in', scale = 1.4)
 
 base_map +
-  geom_point(data = filter(hold, grepl('bass', Common.Name)),
+  geom_point(data = filter(hold, grepl('bass', Common.Name)) %>%
+               ungroup() %>%
+               add_row(season = 'Summer'),
              aes(x = `Dep Long_DD`, y = `Dep Lat_DD`, size = fish, color = DP)) +
   facet_wrap(~ season, ncol = 2) +
   scale_color_gradient(low = 'black', high = 'red') +
-  labs(title = 'Striped Bass', color = 'DPD', size = '# Fish') +
+  labs(title = 'Striped bass', color = 'DPD', size = '# Fish') +
   guides(size = guide_legend(order = 1)) +
   theme_bw()
+ggsave('SB_DPD.jpeg', path = 'p:/rothermel/boemfinal/DPD', dpi = 300,
+       width = 6.5, height = 4, units = 'in', scale = 1.4)
 
 base_map +
   geom_point(data = filter(hold, grepl('White', Common.Name)),
              aes(x = `Dep Long_DD`, y = `Dep Lat_DD`, size = fish, color = DP)) +
   facet_wrap(~ season, ncol = 2) +
   scale_color_gradient(low = 'black', high = 'red') +
-  labs(title = 'White Sharks', color = 'DPD', size = '# Fish') +
+  labs(title = 'White sharks', color = 'DPD', size = '# Fish') +
   guides(size = guide_legend(order = 1)) +
   theme_bw()
+ggsave('WS_DPD.jpeg', path = 'p:/rothermel/boemfinal/DPD', dpi = 300,
+       width = 6.5, height = 4, units = 'in', scale = 1.4)
