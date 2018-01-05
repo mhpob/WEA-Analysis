@@ -1,9 +1,10 @@
 library(gdistance)
 
-sites <- read.csv('p:/obrien/biotelemetry/md wea habitat/wea-analysis/data and imports/sites.csv')
-sites <- sites[sites$Type %in% c('Actual', ''),]
-row.names(sites) <- sites$ID
-sites <- sites[, c(3, 2)]
+sites <- readxl::read_excel('p:/obrien/biotelemetry/md wea habitat/data/vr2ar deployment_recovery log.xlsx')
+sites <- as.data.frame(
+  sites[sites$`Cruise ID` == '201708' & !is.na(sites$`Dep Long_DD`),])
+row.names(sites) <- sites$`Site ID`
+sites <- sites[, c('Dep Long_DD', 'Dep Lat_DD')]
 
 midstates <- shapefile('p:/obrien/midatlantic/matl_states_land.shp')
 
@@ -44,9 +45,17 @@ lc.dist <- function (trans, loc, res = c("dist", "path")){
 }
 
 distances <- lc.dist(geo16, sites, res = 'dist')
+
 # Convert km to nautical miles
-distances <- 0.5399568 * distances
+# distances <- 0.5399568 * distance
+
 # Transit times (min) @ 19 kt (Carson)
-transit <- round(distances / 19 * 60)
+# transit <- round(distances / 19 * 60)
 # Transit times (min) @ 7 kt (Sea born)
 # transit <- round(distances / 7 * 60)
+
+# Convert matrix to 3-column data frame
+tidy_dists <- reshape2::melt(data = as.matrix(distances),
+                             varnames = c('from', 'to'),
+                             value.name = 'distance',
+                             as.is = T)
