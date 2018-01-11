@@ -116,22 +116,6 @@ sp_season <- species %>%
   distinct(array, transmitter, .keep_all = T) %>%
   summarize(min = min(date.local))
 
-AS_season <- filter(sp_season, grepl('c stur', Common.Name, ignore.case = T),
-                    season == 'AutWin17')
-
-# Split according to array/season combos
-AS_season <- split(AS_season, list(AS_season$array, AS_season$season))
-
-# Select non-empty parts of list
-AS_season <- AS_season[lapply(AS_season, function(x){dim(x)[1]}) > 0]
-
-# Apply ecdf to list
-AS_season <- lapply(AS_season, function(x){ecdf(x$min)})
-plot(AS_season[[1]], verticals = T)
-
-SB <- filter(sp_season, grepl('striped', Common.Name, ignore.case = T))
-
-
 det_ecdfplot <- function(data, spec.plot, array,
                          season.plot = NULL, ylab = NULL, ...){
 
@@ -222,3 +206,76 @@ temp_ecdfplot(spec.data = sp_season, array = 'MD WEA',
 temp_ecdfplot(spec.data = sp_season, array = 'MD WEA',
               spec.plot = 'str', season.plot = 'AutWin18')
 
+
+d_ecdfplot <- function(data, spec.plot, array,
+                       season.plot = NULL, ylab = NULL, ...){
+
+  data <- filter(data,
+                 grepl(spec.plot, Common.Name, ignore.case = T),
+                 season == season.plot)
+  if(is.null(season.plot)){
+    data <- split(data, data$array)
+  } else{
+    data <- split(data, list(data$array, data$season))
+  }
+  data <- lapply(data, function(x){ecdf(x$min)})
+
+  subset <- grep(array, names(data))
+
+  plot(x = as_datetime(knots(data[[subset]])),
+       y = data[[subset]](knots(data[[subset]])),
+       ylim = c(0, 1),
+       xlab = 'Date',
+       ylab = ifelse(is.null(ylab),
+                     eval(expression(paste(
+                       'Fraction detected in', array, 'array,', season.plot))),
+                     ylab),
+       pch = 16, ...)
+
+  # This is just to stop lines() from throwing warnings when we specify
+  # graphical parameters it doesn't like.
+  LLines <- function(..., log, axes, frame.plot, panel.first, panel.last) {
+    lines(...)
+  }
+  LLines(x = as_datetime(knots(data[[subset]])),
+         y = data[[subset]](knots(data[[subset]])),
+         type = 's', ...)
+}
+
+t_ecdfplot <- function(spec.data, array, spec.plot){
+  temp.data <- rec.data[rec.data$array == array,]
+
+  date_lims <- ymd(c('20161101', '20180101'), tz = 'America/New_York')
+
+  par(mar = c(4, 4, 1, 4) + 0.1)
+  plot(x = temp.data$Date.Time,
+       y = temp.data$avg.temp,
+       xlim = c(date_lims[1], date_lims[2]),
+       xaxt = 'n',
+       xlab = 'Date',
+       ylab = 'Temperature (C)',
+       type = 'l',
+       lwd = 2)
+  axis.POSIXct(1, at = seq(date_lims[1], date_lims[2], by = 'month'),
+               format = '%m-%Y')
+
+  par(new = T)
+  d_ecdfplot(data = spec.data, spec.plot = spec.plot, array = array,
+               season.plot = 'AutWin17', ylab = '', axes = F, col = 'deepskyblue4',
+             xlim = c(date_lims[1], date_lims[2]))
+  par(new = T)
+  d_ecdfplot(data = spec.data, spec.plot = spec.plot, array = array,
+             season.plot = 'SprSum17', ylab = '', axes = F, col = 'orangered',
+             xlim = c(date_lims[1], date_lims[2]))
+  par(new = T)
+  d_ecdfplot(data = spec.data, spec.plot = spec.plot, array = array,
+             season.plot = 'AutWin18', ylab = '', axes = F, col = 'deepskyblue4',
+             xlim = c(date_lims[1], date_lims[2]))
+  axis(4, las = 0.5, col.axis = 'blue')
+  mtext(side = 4, line = 2, text = eval(expression(paste(
+    'Fraction detected in', array, 'array'))), col = 'blue')
+}
+
+t_ecdfplot(spec.data = sp_season, array = 'Inner', spec.plot = 'c stur')
+t_ecdfplot(spec.data = sp_season, array = 'MD WEA', spec.plot = 'str')
+t_ecdfplot(spec.data = sp_season, array = 'Outer', spec.plot = 'White')
