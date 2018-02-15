@@ -8,7 +8,7 @@ boem_sb <- detections %>%
                                 sep = '-')) %>%
   mutate(depth = -1.2129 + sensor.value * 0.3032)
 
-tag_data <- read_excel('p:/obrien/biotelemetry/md wea habitat/data/wea potomac tagging data.xlsx')
+tag_data <- read_excel('p:/obrien/biotelemetry/md wea habitat/data/wea tagging data.xlsx')
 
 boem_sb <- left_join(boem_sb, tag_data, by = c('transmitter' = 'Tag ID'))
 
