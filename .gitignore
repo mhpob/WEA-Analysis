@@ -43,3 +43,8 @@ css/
 js/
 index.html
 
+# "Thumbs"
+Thumbs.db
+
+# Ellie's exploration
+*_E.R
