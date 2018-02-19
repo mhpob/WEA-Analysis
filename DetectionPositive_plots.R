@@ -14,20 +14,25 @@ load('p:/obrien/randomr/ACTactive.rda')
 species <- left_join(data.frame(dets), ACTactive,
                      by = c('transmitter' = 'Tag.ID.Code.Standard')) %>%
   mutate(month = lubridate::month(date.local),
-    season = ifelse(month %in% 4:6, 'Spring',
-                    ifelse(month %in% 7:9, 'Summer',
-                    ifelse(month %in% 10:12, 'Autumn',
-                           'Winter'))),
-    season = ordered(season, levels = c('Autumn', 'Winter', 'Spring', 'Summer')),
-    Common.Name = ifelse(grepl('striped', Common.Name, ignore.case = T),
-                              'Striped bass',
-                       ifelse(grepl('c stur|^stur', Common.Name, ignore.case = T),
-                              'Atlantic sturgeon',
-                       ifelse(grepl('white shark',  Common.Name, ignore.case = T),
-                              'White shark',
-                              Common.Name)))) %>%
-  filter(Common.Name %in% c('Striped bass', 'Atlantic sturgeon', 'White shark'),
-         date.local <= '2017-10-01')
+         year = ifelse(month %in% 10:12 |
+                         (month == 9 & lubridate::day(date.local) %in% 16:30),
+                       lubridate::year(date.local) - 1999,
+                       lubridate::year(date.local) - 2000),
+         season = ifelse(month %in% 4:8 |
+                           (month == 3 & lubridate::day(date.local) %in% 16:31) |
+                           (month == 9 & lubridate::day(date.local) %in% 1:15),
+                         'Spring/Summer', 'Autumn/Winter'),
+         season = factor(paste0(season, year),
+                         levels = c('Autumn/Winter17', 'Spring/Summer17',
+                                    'Autumn/Winter18')),
+         Common.Name = case_when(
+           grepl('striped', Common.Name, ignore.case = T) ~ 'Striped bass',
+           grepl('c stur|^stur', Common.Name, ignore.case = T) ~ 'Atlantic sturgeon',
+           grepl('white shark',  Common.Name, ignore.case = T) ~ 'White shark',
+           grepl('dusky',  Common.Name, ignore.case = T) ~ 'Dusky shark',
+           T ~ Common.Name)) %>%
+  filter(Common.Name %in%
+           c('Striped bass', 'Atlantic sturgeon', 'White shark', 'Dusky shark'))
 
 n_unique <- species %>%
   group_by(station, Common.Name, season) %>%
@@ -59,24 +64,22 @@ base_map <- ggplot() +
   geom_polygon(data = wea, aes(x = long, y = lat, group = group),
                fill = NA, color = 'black') +
   coord_map(xlim = c(-75.2, -74.45), ylim = c(38.2, 38.5)) +
-  labs(x = 'Longitude', y = 'Latitude')
+  labs(x = NULL, y = NULL)
 
 
 base_map +
-  geom_point(data = filter(hold, grepl('stur', Common.Name)),
+  geom_point(data = filter(hold, grepl('Dusk', Common.Name)),
              aes(x = `Dep Long_DD`, y = `Dep Lat_DD`, size = fish, color = DP)) +
   facet_wrap(~ season, ncol = 2) +
   scale_color_gradient(low = 'black', high = 'red') +
-  labs(title = 'Atlantic sturgeon', color = 'DPD', size = '# Fish') +
+  labs(title = 'Dusky sharks', color = 'DPD', size = '# Fish') +
   guides(size = guide_legend(order = 1)) +
   theme_bw()
 ggsave('AS_DPD.jpeg', path = 'p:/rothermel/boemfinal/DPD', dpi = 300,
        width = 6.5, height = 4, units = 'in', scale = 1.4)
 
 base_map +
-  geom_point(data = filter(hold, grepl('bass', Common.Name)) %>%
-               ungroup() %>%
-               add_row(season = 'Summer'),
+  geom_point(data = filter(hold, grepl('bass', Common.Name)),
              aes(x = `Dep Long_DD`, y = `Dep Lat_DD`, size = fish, color = DP)) +
   facet_wrap(~ season, ncol = 2) +
   scale_color_gradient(low = 'black', high = 'red') +
