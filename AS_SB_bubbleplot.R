@@ -30,7 +30,7 @@ n_spec_month <- species %>%
 
 library(raster)
 midstates <- shapefile('p:/obrien/midatlantic/matl_states_land.shp')
-wea <- shapefile('c:/users/secor/desktop/gis products/md mammals/wind_planning_areas/Wind_Planning_Areas_06_20_2014.shp')
+wea <- shapefile('c:/users/secor lab/desktop/gis products/md mammals/wind_planning_areas/Wind_Planning_Areas_06_20_2014.shp') # add "secor lab" on Ellie's desktop
 
 library(ggplot2)
 midstates <- fortify(midstates)
