@@ -2,6 +2,16 @@ library(lubridate); library(dplyr)
 
 rec.data <- readRDS("data and imports/rec_events.rds")
 
+setwd("p:/obrien/biotelemetry/md wea habitat/wea-analysis/data and imports")
+rec1 <- readRDS("rec_events.rds")
+rec2 <- readRDS("rec_events2.rds")
+library(dplyr)
+
+rec1 <- subset(rec1,select=-c(6))
+
+rec <- rbind(rec1, rec2)
+rec.data <- subset(rec,select=-c(9:11))
+
 # Temperature summary
 wt.data <- rec.data %>%
   filter(Description == 'Average temperature',
@@ -10,10 +20,29 @@ wt.data <- rec.data %>%
                         ifelse(grepl('O', Site), 'Outer',
                                'MD WEA')),
          Data = as.numeric(Data),
-         day = lubridate::floor_date(Date.Time, 'day'))
+         day = lubridate::floor_date(Date.Time, 'day'),
+         year = ifelse(month(Date.Time) %in% 10:12 |
+                         (month(Date.Time) == 9 & day(Date.Time) %in% 16:30),
+                       year(Date.Time) - 1999, year(Date.Time) - 2000),
+         season = ifelse(month(Date.Time) %in% 4:8 |
+                           (month(Date.Time) == 3 & day(Date.Time) %in% 16:31) |
+                           (month(Date.Time) == 9 & day(Date.Time) %in% 1:15),
+                         'SprSum', 'AutWin'),
+         season = paste0(season, year))
+
 
 wt.data %>%
-  filter(Date.Time > ymd('20170330')) %>%
+  filter(season== "SprSum17") %>%
+  group_by(day, array) %>%
+  summarize(daily = mean(Data))%>%
+  ungroup() %>%
+
+  # group_by(array) %>%
+  summarize(min = min(daily),
+            avg = mean(daily),
+            max = max(daily))
+
+wt.data %>%
   group_by(day, array) %>%
   summarize(daily = mean(Data))%>%
   ungroup() %>%
@@ -24,8 +53,6 @@ wt.data %>%
             max = max(daily))
 
 
-
-
 # Noise Summary
 noise.data <- rec.data %>%
   filter(Description == 'Average noise',
@@ -34,7 +61,33 @@ noise.data <- rec.data %>%
                         ifelse(grepl('O', Site), 'Outer',
                                'MD WEA')),
          Data = as.numeric(Data),
-         day = lubridate::floor_date(Date.Time, 'day'))
+         day = lubridate::floor_date(Date.Time, 'day'),
+         year = ifelse(month(Date.Time) %in% 10:12 |
+                         (month(Date.Time) == 9 & day(Date.Time) %in% 16:30),
+                       year(Date.Time) - 1999, year(Date.Time) - 2000),
+         season = ifelse(month(Date.Time) %in% 4:8 |
+                           (month(Date.Time) == 3 & day(Date.Time) %in% 16:31) |
+                           (month(Date.Time) == 9 & day(Date.Time) %in% 1:15),
+                         'SprSum', 'AutWin'),
+         season = paste0(season, year))
+
+noise.data %>%
+  group_by(day, array) %>%
+  summarize(daily = mean(Data))%>%
+  ungroup() %>%
+
+  # group_by(array) %>%
+  summarize(min = min(daily),
+            avg = mean(daily),
+            max = max(daily))
+
+noise.data %>%
+  group_by(day, array) %>%
+  summarize(daily = mean(Data))%>%
+  ungroup() %>%
+  summarize(min = min(daily),
+            avg = mean(daily),
+            max = max(daily))
 
 # Number of days with loud noise pulses
 noise.data %>%
@@ -61,7 +114,15 @@ tilt.data <- rec.data %>%
                         ifelse(grepl('O', Site), 'Outer',
                                'MD WEA')),
          Data = as.numeric(Data),
-         day = lubridate::floor_date(Date.Time, 'day'))
+         day = lubridate::floor_date(Date.Time, 'day'),
+         year = ifelse(month(Date.Time) %in% 10:12 |
+                         (month(Date.Time) == 9 & day(Date.Time) %in% 16:30),
+                       year(Date.Time) - 1999, year(Date.Time) - 2000),
+         season = ifelse(month(Date.Time) %in% 4:8 |
+                           (month(Date.Time) == 3 & day(Date.Time) %in% 16:31) |
+                           (month(Date.Time) == 9 & day(Date.Time) %in% 1:15),
+                         'SprSum', 'AutWin'),
+         season = paste0(season, year))
 
 # Mean daily tilt angle
 tilt.data %>%
