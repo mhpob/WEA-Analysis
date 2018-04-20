@@ -2,22 +2,30 @@ library(gdistance)
 
 sites <- readxl::read_excel('p:/obrien/biotelemetry/md wea habitat/data/vr2ar deployment_recovery log.xlsx')
 sites <- as.data.frame(
-  sites[sites$`Cruise ID` == '201708' & !is.na(sites$`Dep Long_DD`),])
+  sites[sites$`Cruise ID` == '201712' & !is.na(sites$`Dep Long_DD`),])
 row.names(sites) <- sites$`Site ID`
 sites <- sites[, c('Dep Long_DD', 'Dep Lat_DD')]
+names(sites) <- c('long', 'lat')
 
-midstates <- shapefile('p:/obrien/midatlantic/matl_states_land.shp')
+bailey_sites <- read.csv('p:/obrien/biotelemetry/md wea habitat/data/bailey_sites.csv',
+                         stringsAsFactors = F)
+row.names(bailey_sites) <- bailey_sites$Site
+bailey_sites <- bailey_sites[, c('Longitude', 'Latitude')]
+names(bailey_sites) <- c('long', 'lat')
 
-ras.back <- raster(extent(-75.2, -74.4, 38.25, 38.45),
+sites <- rbind(data.frame('long' = -75.1033, 'lat' = 38.3274, row.names = 'OCMD'),
+               sites, bailey_sites)
+
+
+ras.back <- raster(extent(-75.2, -74.3, 38.25, 38.45),
                   resolution = 1/1200, #3 arc-second grid = 1200, 5 = 720, 10 = 360
                   vals = 1,
-                  crs = proj4string(midstates))
-ras.water <- mask(ras.back, midstates, inverse = T)
+                  crs = CRS("+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0"))
 
-# plot(ras.water)
+# plot(ras.back)
 # points(sites$long, sites$lat)
 
-trans16 <- transition(ras.water, transitionFunction = function(x){1}, 16)
+trans16 <- transition(ras.back, transitionFunction = function(x){1}, 16)
 geo16 <- geoCorrection(trans16, type = 'c')
 
 lc.dist <- function (trans, loc, res = c("dist", "path")){
@@ -47,12 +55,14 @@ lc.dist <- function (trans, loc, res = c("dist", "path")){
 distances <- lc.dist(geo16, sites, res = 'dist')
 
 # Convert km to nautical miles
-# distances <- 0.5399568 * distance
+distances <- 0.5399568 * distances
 
 # Transit times (min) @ 19 kt (Carson)
 # transit <- round(distances / 19 * 60)
 # Transit times (min) @ 7 kt (Sea born)
-# transit <- round(distances / 7 * 60)
+transit <- round(distances / 7 * 60)
+
+# write.csv(as.matrix(transit), 'times.csv')
 
 # Convert matrix to 3-column data frame
 tidy_dists <- reshape2::melt(data = as.matrix(distances),
