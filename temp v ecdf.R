@@ -14,14 +14,15 @@ species <- left_join(data.frame(dets), ACTactive,
                               'Striped bass',
                        ifelse(grepl('c stur|^stur', Common.Name, ignore.case = T),
                               'Atlantic sturgeon',
-                       ifelse(grepl('white shark',  Common.Name, ignore.case = T),
-                              'White shark',
-                              Common.Name))))
+                              ifelse(grepl('white shark',  Common.Name, ignore.case = T),
+                                     'White shark',
+                                     Common.Name))))
 
 ## Import temperature data ----
 rec.data <- readRDS("data and imports/rec_events.rds")
 rec.data <- rec.data %>%
-  filter(Description == 'Average temperature') %>%
+  filter(Description == 'Average temperature',
+         Date.Time >= '2016-11-11 23:59:59') %>%
   mutate(Date.Time = with_tz(Date.Time, tz = 'America/New_York'),
          Date.Time = floor_date(Date.Time, '6hour'),
          array = ifelse(grepl('I', Site), 'Inner',
@@ -229,7 +230,7 @@ d_ecdfplot <- function(data, spec.plot, array,
   plot(x = as_datetime(knots(data[[subset]])),
        y = data[[subset]](knots(data[[subset]])),
        ylim = c(0, 1),
-       xlab = 'Date',
+       xlab = '',
        ylab = ifelse(is.null(ylab),
                      eval(expression(paste(
                        'Fraction detected in', array, 'array,', season.plot))),
@@ -251,7 +252,7 @@ t_ecdfplot <- function(spec.data, array, spec.plot){
 
   date_lims <- ymd(c('20161101', '20180101'), tz = 'America/New_York')
 
-  par(mar = c(4, 4, 1, 4) + 0.1)
+  par(mar = c(3.5, 3.5, 1, 3.5))
   plot(x = temp.data$Date.Time,
        y = temp.data$avg.temp,
        xlim = c(date_lims[1], date_lims[2]),
@@ -259,9 +260,12 @@ t_ecdfplot <- function(spec.data, array, spec.plot){
        xlab = 'Date',
        ylab = 'Temperature (C)',
        type = 'l',
-       lwd = 2)
+       lwd = 2,
+       mgp = c(1.6, 0.6, 0))
+  abline(v = as.POSIXct('2017-03-16'), col = 'red')
+  abline(v = as.POSIXct('2017-09-16'), col = 'red')
   axis.POSIXct(1, at = seq(date_lims[1], date_lims[2], by = 'month'),
-               format = '%m-%Y')
+               format = '%m-%Y', mgp = c(1.6, 0.6, 0))
 
   par(new = T)
   d_ecdfplot(data = spec.data, spec.plot = spec.plot, array = array,
@@ -275,13 +279,12 @@ t_ecdfplot <- function(spec.data, array, spec.plot){
   d_ecdfplot(data = spec.data, spec.plot = spec.plot, array = array,
              season.plot = 'AutWin18', ylab = '', axes = F, col = 'deepskyblue4',
              xlim = c(date_lims[1], date_lims[2]))
-  axis(4, las = 0.5, col.axis = 'blue')
-  mtext(side = 4, line = 2, text = eval(expression(paste(
+  axis(4, col.axis = 'blue')
+  mtext(side = 4, line = 2, mgp = c(1.6, 0.6, 0), text = eval(expression(paste(
     'Fraction detected in', array, 'array'))), col = 'blue')
 }
 
 t_ecdfplot(spec.data = sp_season, array = 'Inner', spec.plot = 'c stur')
+t_ecdfplot(spec.data = sp_season, array = 'MD WEA', spec.plot = 'c stur')
+t_ecdfplot(spec.data = sp_season, array = 'Outer', spec.plot = 'c stur')
 
-
-
-t_ecdfplot(spec.data = sp_season, array = 'MD WEA', spec.plot = 'str')
