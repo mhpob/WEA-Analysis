@@ -37,14 +37,15 @@ data <- rangetest %>%
                               grepl('60769', transmitter) ~ 'AN3_250',
                               grepl('60770', transmitter) ~ 'AN3_800',
                               grepl('60773', transmitter) ~ 'AN3'),
-         day = lubridate::date(date.east))
+         day = lubridate::date(date.east),
+         hour6 = lubridate::floor_date(date.east, unit = '6hour'))
 
 array.spl <- split(data, data$array)
 # lapply(lapply(array.spl, function(x) table(x$internal, x$station)),
 #        function(x) round(x/diag(x), 2))
 
-calc_det_freq <- function(data){
-  spl.data <- split(data, data$day)
+calc_det_freq <- function(data, time_unit){
+  spl.data <- split(data, data[time_unit])
 
   # Count transmission/detection combinations, divide by total transmissions
   spl.data <- lapply(spl.data, function(x) xtabs(~ internal + station, data = x))
@@ -62,7 +63,12 @@ calc_det_freq <- function(data){
 
   row.names(df.data) <- NULL
   df.data <- df.data[, c('date', 'distance', 'Freq')]
-  df.data$date <- as.Date(df.data$date)
+  if(time_unit == 'day'){
+    df.data$date <- as.Date(df.data$date)
+  } else {
+    df.data$date <- lubridate::ymd_hms(df.data$date, tz = 'America/New_York')
+  }
+
   df.data <- rbind(df.data,
                    data.frame(date = rep(unique(df.data$date), times = 2),
                               distance = 0,
@@ -71,7 +77,7 @@ calc_det_freq <- function(data){
   df.data
 }
 
-array.spl <- lapply(array.spl, calc_det_freq)
+array.spl <- lapply(array.spl, calc_det_freq, time_unit = 'day')
 for(i in seq_along(array.spl)) array.spl[[i]]$array <- names(array.spl)[i]
 det.freq <- do.call(rbind, array.spl)
 row.names(det.freq) <- NULL
@@ -136,7 +142,7 @@ ggplot()+geom_line(data = d50, aes(x = date, y = d50), lwd = 1) +
   labs(x = NULL, y = 'D50', color = 'Array') +
   theme_bw()
 
-
+# Other data ----
 # Pairs and TS plot freq by noise, tilt, temperature, sst, deltat (daily)
 #     by noise, tilt, temperature (hourly)
 
@@ -171,6 +177,36 @@ ggplot() + geom_point(data = env.vars,
   theme_bw() +
   theme(legend.position = c(0.9, 0.9))
 
-# Move onto wind/wave direction and magnitude
-met.data <- readRDS('data and imports/ndbc_data.rds')
+# SST and DeltaT
+sst <- readRDS('data and imports/sst.rds')
+sst <- sst %>%
+  filter(grepl('IS2|AN3', site)) %>%
+  mutate(array = ifelse(grepl('I', site), 'Inner', 'MD WEA')) %>%
+  group_by(array, date) %>%
+  summarize(sst = mean(sst))
 
+env.vars <- env.vars %>%
+  left_join(sst) %>%
+  mutate(dt = sst - `Average temperature`)
+
+# Wind/wave direction and magnitude
+met.data <- readRDS('data and imports/ndbc_data.rds')
+met.data <- met.data %>%
+  filter(date.time > '2017-12-21',
+         date.time < '2018-04-11',
+         station == '44009') %>%
+  mutate(date = lubridate::date(date.time)) %>%
+  group_by(date, station) %>%
+  summarize_all(mean, na.rm = T) %>%
+  select(-date.time)
+
+env.vars <- left_join(env.vars, met.data)
+
+ggplot() + geom_point(data = env.vars,
+                      aes(x = wvht, y = d50, color = array))
+pairs(env.vars[env.vars$array == 'Inner', c(7:10, 12, 14:15, 17:22)])
+
+in.vars <- env.vars[env.vars$array == 'Inner' & !is.na(env.vars$d50),]
+wea.vars <- env.vars[env.vars$array == 'MD WEA',]
+
+cor(in.vars$d50, in.vars$wvht)
