@@ -42,36 +42,16 @@ data <- rangetest %>%
 
 array.spl <- split(data, data$array)
 # lapply(lapply(array.spl, function(x) table(x$internal, x$station)),
-       # function(x) round(x/diag(x), 2))
+#        function(x) round(x/diag(x), 2))
 
 calc_det_freq <- function(data, time_unit){
   spl_time <- split(data, data[time_unit])
-  spl_t.array <- lapply(spl_time, function(x) split(x, x$array))
 
   # Count transmission/detection combinations, divide by total transmissions
-  spl_time <- lapply(spl_t.array, function(x){
-
-    temp_x <- lapply(x, function(y){
-      temp_y <- xtabs(~ internal + station, data = y)
-      temp_y <- round(temp_y / diag(temp_y), 2)
-      as.data.frame(temp_y, stringsAsFactors = F)
-    })
-
-    for(i in 1:2){
-      temp_x[[i]]$array <- names(temp_x)[i]
-    }
-
-    temp_x <- do.call(rbind, temp_x)
-    row.names(temp_x) <- NULL
-
-    temp_x$d1 <- as.numeric(sapply(
-      strsplit(temp_x$internal, '[_]'), '[', 2))
-    temp_x$d2 <- as.numeric(sapply(
-      strsplit(temp_x$station, '[_]'), '[', 2))
-    temp_x[is.na(temp_x)] <- 0
-    temp_x$distance <- abs(temp_x$d1 - temp_x$d2)
-
-    temp_x[, names(temp_x) %in% c('array', 'distance', 'Freq')]
+  spl_time <- lapply(spl_time, function(x){
+    temp_x <- xtabs(~ internal + station, data = x)
+    temp_x <- round(temp_x / diag(temp_x), 2)
+    as.data.frame(temp_x, stringsAsFactors = F)
   })
 
   for(i in seq_along(spl_time)){
@@ -81,6 +61,15 @@ calc_det_freq <- function(data, time_unit){
   df.data <- do.call(rbind, spl_time)
   row.names(df.data) <- NULL
 
+  df.data$d1 <- as.numeric(sapply(
+      strsplit(df.data$internal, '[_]'), '[', 2))
+  df.data$d2 <- as.numeric(sapply(
+      strsplit(df.data$station, '[_]'), '[', 2))
+  df.data[is.na(df.data)] <- 0
+  df.data$Freq[df.data$Freq > 1] <- 1
+  df.data$distance <- abs(df.data$d1 - df.data$d2)
+
+
   if(time_unit == 'day'){
     df.data$date <- as.Date(df.data$date)
   } else {
@@ -88,30 +77,54 @@ calc_det_freq <- function(data, time_unit){
   }
 
   names(df.data) <- tolower(names(df.data))
-  df.data[, c('date', 'array', 'distance', 'freq')]
+  df.data[, c('date', 'distance', 'freq')]
 }
 
 array.spl <- lapply(array.spl, calc_det_freq, time_unit = 'day')
 for(i in seq_along(array.spl)){
   array.spl[[i]]$array <- names(array.spl)[i]
-  array.spl[[i]]$Freq[array.spl[[i]]$Freq > 1] <- 1
 }
 
 # Modeling ----
 lapply(array.spl, function(x){
-  glm(Freq ~ distance, family = 'binomial', data = x)
+  glm(freq ~ distance, family = 'binomial', data = x)
 })
 
 d50_glm <- function(data){
   spl.data <- split(data, data$date)
-  spl.data <- lapply(spl.data, function(x){
-    glm(Freq ~ distance, data = x, family = 'binomial')
+  d50 <- lapply(spl.data, function(x){
+    model_fit <- glm(freq ~ distance, data = x, family = 'binomial')
+    as.numeric(-coef(model_fit)[1]/coef(model_fit)[2])
   })
-  d50 <- lapply(spl.data, function(x) as.numeric(-coef(x)[1]/coef(x)[2]))
   d50 <- data.frame(d50 = do.call(rbind, d50))
   d50$date <- as.Date(row.names(d50))
   row.names(d50) <- NULL
-  d50
+  d50[, c('date', 'd50')]
 }
 
-j <- d50_glm(array.spl[[1]])
+d50 <- lapply(array.spl, d50_glm)
+for(i in seq_along(d50)) d50[[i]]$array <- names(d50)[i]
+d50 <- do.call(rbind, d50)
+
+library(ggplot2)
+ggplot() + geom_line(data = d50, aes(x = date, y = d50, color = array), lwd = 2) +
+  labs(x = NULL, y = 'D50 (m)', color = 'Array') +
+  theme_bw()
+
+d50plot <- function(array, day){
+  ggplot(data = filter(array.spl[[array]], date == day),
+         aes(x = distance, y = freq)) +
+    geom_point() +
+    geom_smooth(method = 'glm', method.args = list(family = 'binomial'), se = F) +
+    geom_point(data = filter(d50, array == array, date == day),
+               aes(x = d50, y = 0.5), col = 'red', size = 3) +
+    geom_segment(data = filter(d50, array == array, date == day),
+                 aes(x = 0, y = 0.5, xend = d50, yend = 0.5)) +
+    geom_segment(data = filter(d50, array == array, date == day),
+                 aes(x = d50, y = 0, xend = d50, yend = 0.5)) +
+    lims(x = c(0, 1000), y = c(0, 1)) +
+    labs(x = 'Distance', y = 'Frequency of Detection') +
+    coord_flip()
+}
+
+d50plot('Inner', '2018-03-20')
