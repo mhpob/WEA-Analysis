@@ -134,6 +134,10 @@ ggplot(data = det.freq, aes(x = as.Date(date), y = Freq,
 ggplot() +
   geom_boxplot(data = det.freq, aes(x = distance, y = Freq, group = distance)) +
   geom_line(data = predicted, aes(x = distance, y = predicted), col = 'red') +
+  # geom_smooth(data = det.freq, aes(x = distance, y = Freq), method = 'nls',
+              # method.args = list(formula = y ~ 1 / (1 + exp(-k * (x - d50))),
+                                 # start = list(k = -0.01, d50 = 500)),
+              # se = F) +
   facet_wrap(~ array, nrow = 2) +
   labs(x = 'Distance', y = 'Frequency of detection', fill = 'Array')
 
@@ -210,3 +214,6 @@ in.vars <- env.vars[env.vars$array == 'Inner' & !is.na(env.vars$d50),]
 wea.vars <- env.vars[env.vars$array == 'MD WEA',]
 
 cor(in.vars$d50, in.vars$wvht)
+
+
+
