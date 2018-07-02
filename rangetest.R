@@ -133,11 +133,16 @@ ggplot(data = det.freq, aes(x = as.Date(date), y = Freq,
 
 ggplot() +
   geom_boxplot(data = det.freq, aes(x = distance, y = Freq, group = distance)) +
-  geom_line(data = predicted, aes(x = distance, y = predicted), col = 'red') +
-  # geom_smooth(data = det.freq, aes(x = distance, y = Freq), method = 'nls',
-              # method.args = list(formula = y ~ 1 / (1 + exp(-k * (x - d50))),
-                                 # start = list(k = -0.01, d50 = 500)),
-              # se = F) +
+  geom_smooth(data = det.freq, aes(x = distance, y = Freq),
+              method = 'glm', method.args = list(family = 'binomial')) +
+  geom_smooth(data = det.freq, aes(x = distance, y = Freq), col = 'green',
+              method = 'glm',
+              method.args = list(family = binomial(link = 'probit'))) +
+  # geom_line(data = predicted, aes(x = distance, y = predicted), col = 'red') +
+  geom_smooth(data = det.freq, aes(x = distance, y = Freq), col = 'red',method = 'nls',
+              method.args = list(formula = y ~ 1 / (1 + exp(-k * (x - d50))),
+                                 start = list(k = -0.01, d50 = 500)),
+              se = F) +
   facet_wrap(~ array, nrow = 2) +
   labs(x = 'Distance', y = 'Frequency of detection', fill = 'Array')
 
