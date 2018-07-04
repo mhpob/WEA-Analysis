@@ -49,9 +49,11 @@ calc_det_freq <- function(data, time_unit){
 
   # Count transmission/detection combinations, divide by total transmissions
   spl_time <- lapply(spl_time, function(x){
-    temp_x <- xtabs(~ internal + station, data = x)
-    temp_x <- round(temp_x / diag(temp_x), 2)
-    as.data.frame(temp_x, stringsAsFactors = F)
+    temp <- xtabs(~ internal + station, data = x)
+    temp_df <- as.data.frame(temp, stringsAsFactors = F)
+    temp_df$trials <- rep(diag(temp), each = 3)
+    temp_df$fail <- temp_df$trials - temp_df$Freq
+    temp_df
   })
 
   for(i in seq_along(spl_time)){
@@ -66,8 +68,12 @@ calc_det_freq <- function(data, time_unit){
   df.data$d2 <- as.numeric(sapply(
       strsplit(df.data$station, '[_]'), '[', 2))
   df.data[is.na(df.data)] <- 0
-  df.data$Freq[df.data$Freq > 1] <- 1
   df.data$distance <- abs(df.data$d1 - df.data$d2)
+
+  df.data$freq <- df.data$Freq / df.data$trials
+  df.data$freq[df.data$freq > 1] <- 1
+
+  df.data$fail[df.data$fail < 0] <- 0
 
 
   if(time_unit == 'day'){
@@ -76,8 +82,8 @@ calc_det_freq <- function(data, time_unit){
     df.data$date <- lubridate::ymd_hms(df.data$date, tz = 'America/New_York')
   }
 
-  names(df.data) <- tolower(names(df.data))
-  df.data[, c('date', 'distance', 'freq')]
+  names(df.data)[names(df.data) == 'Freq'] <- 'success'
+  df.data[, c('date', 'distance', 'trials', 'success', 'fail', 'freq')]
 }
 
 array.spl <- lapply(array.spl, calc_det_freq, time_unit = 'day')
@@ -89,7 +95,7 @@ det.freq <- bind_rows(array.spl)
 
 # D50 Modeling ----
 lapply(array.spl, function(x){
-  glm(freq ~ distance, family = binomial, data = x)
+  glm(cbind(success, fail) ~ distance, family = binomial, data = x)
 })
 
 dpct_glm <- function(data, pct = 50){
@@ -98,7 +104,7 @@ dpct_glm <- function(data, pct = 50){
 
   dpct <- lapply(spl.data, function(x){
     # D50 from binomial with logit link
-    model_fit <- glm(freq ~ distance, data = x, family = 'binomial')
+    model_fit <- glm(cbind(success, fail) ~ distance, data = x, family = 'binomial')
     as.numeric(
       (log10(p / (1 - p)) - coef(model_fit)[1]) / coef(model_fit)[2]
     )
@@ -148,11 +154,11 @@ filter(det.freq, distance != 0) %>%
             max = max(freq))
 
 # Test array differences, block by distance
-model_array <- glm(freq ~ array + distance, family = binomial, data = det.freq)
+model_array <- glm(cbind(success, fail) ~ array + distance, family = binomial, data = det.freq)
 
 
 # Model curve comparison
-model <- glm(freq ~ distance * array, family = binomial,
+model <- glm(cbind(success, fail) ~ distance * array, family = binomial,
              data = det.freq)
 drop1(model, ~., test = 'Chisq')
 
