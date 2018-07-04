@@ -85,46 +85,214 @@ for(i in seq_along(array.spl)){
   array.spl[[i]]$array <- names(array.spl)[i]
 }
 
-# Modeling ----
+det.freq <- bind_rows(array.spl)
+
+# D50 Modeling ----
 lapply(array.spl, function(x){
-  glm(freq ~ distance, family = 'binomial', data = x)
+  glm(freq ~ distance, family = binomial, data = x)
 })
 
-d50_glm <- function(data){
+dpct_glm <- function(data, pct = 50){
   spl.data <- split(data, data$date)
-  d50 <- lapply(spl.data, function(x){
+  p <- pct/100
+
+  dpct <- lapply(spl.data, function(x){
+    # D50 from binomial with logit link
     model_fit <- glm(freq ~ distance, data = x, family = 'binomial')
-    as.numeric(-coef(model_fit)[1]/coef(model_fit)[2])
+    as.numeric(
+      (log10(p / (1 - p)) - coef(model_fit)[1]) / coef(model_fit)[2]
+    )
   })
-  d50 <- data.frame(d50 = do.call(rbind, d50))
-  d50$date <- as.Date(row.names(d50))
-  row.names(d50) <- NULL
-  d50[, c('date', 'd50')]
+
+
+  dpct <- data.frame(dpct = do.call(rbind, dpct))
+  dpct$date <- as.Date(row.names(dpct))
+  row.names(dpct) <- NULL
+  dpct[, c('date', 'dpct')]
 }
 
-d50 <- lapply(array.spl, d50_glm)
-for(i in seq_along(d50)) d50[[i]]$array <- names(d50)[i]
-d50 <- do.call(rbind, d50)
+d50 <- lapply(array.spl, dpct_glm, 50) %>%
+  bind_rows(.id = 'array') %>%
+  mutate(pct = 50)
 
+d95 <- lapply(array.spl, dpct_glm, 95) %>%
+  bind_rows(.id = 'array') %>%
+  mutate(pct = 95)
+
+d75 <- lapply(array.spl, dpct_glm, 75) %>%
+  bind_rows(.id = 'array') %>%
+  mutate(pct = 75)
+
+d25 <- lapply(array.spl, dpct_glm, 25) %>%
+  bind_rows(.id = 'array') %>%
+  mutate(pct = 25)
+
+d_probs <- rbind(d50, d95, d25, d75) %>%
+  tidyr::spread(pct, dpct)
+
+# Summary ----
+# Overall
+filter(det.freq, distance != 0) %>%
+  group_by(array) %>%
+  summarize(mean = mean(freq),
+            std = sd(freq),
+            min = min(freq),
+            max = max(freq))
+
+# Per distance
+filter(det.freq, distance != 0) %>%
+  group_by(array, distance) %>%
+  summarize(mean = mean(freq),
+            std = sd(freq),
+            min = min(freq),
+            max = max(freq))
+
+# Test array differences, block by distance
+model_array <- glm(freq ~ array + distance, family = binomial, data = det.freq)
+
+
+# Model curve comparison
+model <- glm(freq ~ distance * array, family = binomial,
+             data = det.freq)
+drop1(model, ~., test = 'Chisq')
+
+# Plotting ----
 library(ggplot2)
-ggplot() + geom_line(data = d50, aes(x = date, y = d50, color = array), lwd = 2) +
-  labs(x = NULL, y = 'D50 (m)', color = 'Array') +
+ggplot(data = det.freq) +
+  geom_boxplot(aes(x = distance, y = freq, group = interaction(distance, array),
+                   fill = array)) +
+
+ggplot(data = d_probs) +
+  geom_ribbon(aes(x = date, ymax = `25`, ymin = `75`), fill = 'grey70') +
+  geom_line(aes(x = date, y = `50`), lwd = 1) +
+  geom_line(aes(x = date, y = `95`), color = 'darkgreen', lwd = 1) +
+  labs(x = NULL, y = 'Detection distance (m)') +
+  facet_wrap(~ array, nrow = 2) +
   theme_bw()
 
 d50plot <- function(array, day){
-  ggplot(data = filter(array.spl[[array]], date == day),
+  array <- enquo(array)
+  day <- enquo(day)
+  d50dat <- filter(d50, array == !! array, date == !! day)
+
+  ggplot(data = filter(det.freq, array == !! array, date == !! day),
          aes(x = distance, y = freq)) +
     geom_point() +
     geom_smooth(method = 'glm', method.args = list(family = 'binomial'), se = F) +
-    geom_point(data = filter(d50, array == array, date == day),
+    geom_point(data = d50dat,
                aes(x = d50, y = 0.5), col = 'red', size = 3) +
-    geom_segment(data = filter(d50, array == array, date == day),
+    geom_segment(data = d50dat,
                  aes(x = 0, y = 0.5, xend = d50, yend = 0.5)) +
-    geom_segment(data = filter(d50, array == array, date == day),
+    geom_segment(data = d50dat,
                  aes(x = d50, y = 0, xend = d50, yend = 0.5)) +
     lims(x = c(0, 1000), y = c(0, 1)) +
     labs(x = 'Distance', y = 'Frequency of Detection') +
-    coord_flip()
+    coord_flip() +
+    theme_bw()
 }
 
-d50plot('Inner', '2018-03-20')
+
+# Other data ----
+# Pairs and TS plot freq by noise, tilt, temperature, sst, deltat (daily)
+#     by noise, tilt, temperature (hourly)
+
+rec.data <- readRDS("data and imports/rec_events.rds")
+rec.data <- rec.data %>%
+  mutate(date.local = .POSIXct(Date.Time, tz = 'America/New_York')) %>%
+  filter(date.local > '2017-12-21',
+         date.local < '2018-04-11',
+         grepl('30[3-9]', Receiver),
+         grepl('Average [nt]|Tilt', Description)) %>%
+  mutate(array = ifelse(grepl('A', Site), 'MD WEA', 'Inner'),
+         Data = as.numeric(Data),
+         date = lubridate::date(date.local)) %>%
+  group_by(date, array, Description) %>%
+  summarize(min = min(Data),
+            mean = mean(Data),
+            max = max(Data))
+
+freq.cast <- reshape2::dcast(data = det.freq, date + array ~ distance,
+                             fun.aggregate = mean, value.var = 'freq')
+rec.cast <- reshape2::dcast(rec.data, date + array ~ Description,
+                            fun.aggregate = mean, value.var = 'mean')
+
+env.vars <- full_join(freq.cast, d50) %>% full_join(rec.cast)
+
+GGally::ggpairs(data = env.vars[, c(2, 7, 9:11)], aes(color = array))
+
+
+ggplot(data = env.vars, aes(x = `Average noise`, y = dpct, color = array)) +
+  geom_point(size = 3) +
+  geom_smooth(method = 'glm',
+              method.args = list(family = Gamma(link = 'inverse')),
+              lwd = 1.5) +
+  labs(x = 'Noise (mV)', y = 'Distance at 50% Detection Probability',
+       color = 'Array') +
+  theme_bw() +
+  theme(legend.position = c(0.9, 0.9))
+
+
+# SST and DeltaT
+sst <- readRDS('data and imports/sst.rds')
+sst <- sst %>%
+  filter(grepl('IS2|AN3', site)) %>%
+  mutate(array = ifelse(grepl('I', site), 'Inner', 'MD WEA')) %>%
+  group_by(array, date) %>%
+  summarize(sst = mean(sst))
+
+env.vars <- env.vars %>%
+  left_join(sst) %>%
+  mutate(dt = sst - `Average temperature`)
+
+# Wind/wave direction and magnitude
+met.data <- readRDS('data and imports/ndbc_data.rds')
+met.data <- met.data %>%
+  filter(date.time > '2017-12-21',
+         date.time < '2018-04-11',
+         station == '44009') %>%
+  mutate(date = lubridate::date(date.time)) %>%
+  group_by(date, station) %>%
+  summarize_all(mean, na.rm = T) %>%
+  select(-date.time)
+
+env.vars <- left_join(env.vars, met.data)
+
+ggplot() + geom_point(data = env.vars,
+                      aes(x = wvht, y = d50, color = array))
+pairs(env.vars[env.vars$array == 'Inner', c(7:10, 12, 14:15, 17:22)])
+
+GGally::ggpairs(data = env.vars, aes(color = array),
+                columns = c('dpct', 'Average noise', 'Average temperature', 'Tilt angle',
+                  'sst', 'dt', 'wdir', 'wspd', 'gst', 'wvht', 'dpd', 'apd', 'mwd',
+                  'pres', 'atmp', 'wtmp'))
+
+# Drop sst, wtmp in favor of Average temperature
+# Drop apd and dpd in favor of Average noise
+# Drop gst and wvht in favor of wspd
+GGally::ggpairs(data = env.vars, aes(color = array),
+                columns = c('dpct', 'Average noise', 'Average temperature', 'Tilt angle',
+                            'dt', 'wdir', 'wspd', 'mwd', 'pres', 'atmp'))
+# Clean up
+rm(freq.cast, met.data, rec.cast, sst, i)
+
+# d50 ~ environment modeling ----
+mod_data <- env.vars[, c('date', 'array', 'dpct', 'Average noise',
+                         'Average temperature', 'Tilt angle',
+                         'dt', 'wdir', 'wspd', 'mwd', 'pres', 'atmp')]
+mod <- glm(dpct ~ ., family = gaussian(link = 'inverse'),
+           data = mod_data[mod_data$array == 'MD WEA',
+                           !names(mod_data) %in% c('date', 'array')])
+
+mod_trim <- step(mod)
+mod2 <- glm(dpct ~ .^2, family = gaussian(link = 'inverse'),
+           data = mod_trim$model)
+
+mod_trim <- step(mod2)
+
+# test <- predict(glm(dpct ~ wspd, family = gaussian(link = 'inverse'),
+#                     data = mod_data[mod_data$array == 'MD WEA',
+#                                     !names(mod_data) %in% c('date', 'array')]),
+#                 list('wspd' = seq(2, 18, 0.2)), type = 'response')
+#
+# plot(mod_data[mod_data$array == 'MD WEA', 'wspd'], mod_data[mod_data$array == 'MD WEA', 'dpct'])
+# lines(seq(2, 18, 0.2), test)
