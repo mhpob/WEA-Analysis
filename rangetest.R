@@ -132,19 +132,24 @@ ggplot(data = det.freq, aes(x = as.Date(date), y = Freq,
   labs(x = NULL, y = 'Frequency of detection', color = 'Distance')
 
 ggplot() +
-  geom_boxplot(data = det.freq, aes(x = distance, y = Freq, group = distance)) +
-  geom_smooth(data = det.freq, aes(x = distance, y = Freq),
+  geom_hline(aes(yintercept = 0.5)) +
+  geom_boxplot(data = det.freq,aes(x = distance, y = freq, group = interaction(distance, array),
+                   fill = array)) +
+  scale_fill_manual(values = c('#f8766d', '#00ba38')) +
+  geom_smooth(data = det.freq, aes(x = distance, y = freq, lty = array),
               method = 'glm', method.args = list(family = 'binomial')) +
-  geom_smooth(data = det.freq, aes(x = distance, y = Freq), col = 'green',
+  geom_smooth(data = det.freq, aes(x = distance, y = freq, lty = array), col = 'green',
               method = 'glm',
               method.args = list(family = binomial(link = 'probit'))) +
-  # geom_line(data = predicted, aes(x = distance, y = predicted), col = 'red') +
-  geom_smooth(data = det.freq, aes(x = distance, y = Freq), col = 'red',method = 'nls',
+  geom_smooth(data = det.freq, aes(x = distance, y = freq, lty = array), col = 'red',
+              method = 'nls',
               method.args = list(formula = y ~ 1 / (1 + exp(-k * (x - d50))),
                                  start = list(k = -0.01, d50 = 500)),
               se = F) +
-  facet_wrap(~ array, nrow = 2) +
-  labs(x = 'Distance', y = 'Frequency of detection', fill = 'Array')
+  # facet_wrap(~ array, nrow = 2) +
+  labs(x = 'Distance', y = 'Frequency of detection',
+       lty = 'Array', fill = 'Array') +
+  theme_bw()
 
 ggplot()+geom_line(data = d50, aes(x = date, y = d50), lwd = 1) +
   facet_wrap(~array, ncol = 1) +
