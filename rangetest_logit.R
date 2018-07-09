@@ -110,30 +110,18 @@ dpct_glm <- function(data, pct = 50){
     )
   })
 
-
   dpct <- data.frame(dpct = do.call(rbind, dpct))
   dpct$date <- as.Date(row.names(dpct))
   row.names(dpct) <- NULL
   dpct[, c('date', 'dpct')]
 }
 
-d50 <- lapply(array.spl, dpct_glm, 50) %>%
-  bind_rows(.id = 'array') %>%
-  mutate(pct = 50)
-
-d95 <- lapply(array.spl, dpct_glm, 95) %>%
-  bind_rows(.id = 'array') %>%
-  mutate(pct = 95)
-
-d75 <- lapply(array.spl, dpct_glm, 75) %>%
-  bind_rows(.id = 'array') %>%
-  mutate(pct = 75)
-
-d25 <- lapply(array.spl, dpct_glm, 25) %>%
-  bind_rows(.id = 'array') %>%
-  mutate(pct = 25)
-
-d_probs <- rbind(d50, d95, d25, d75) %>%
+d_probs <- lapply(list(`5` = 5, `25` = 25, `50` = 50, `75` = 75, `95` = 95),
+                  function(x){
+                    lapply(array.spl, dpct_glm, x) %>%
+                      bind_rows(.id = 'array')
+                  }) %>%
+  bind_rows(.id = 'pct') %>%
   tidyr::spread(pct, dpct)
 
 # Summary ----
@@ -153,27 +141,38 @@ filter(det.freq, distance != 0) %>%
             min = min(freq),
             max = max(freq))
 
+# D50 summary
+d_probs %>%
+  group_by(array) %>%
+  summarize(mean = mean(`50`),
+            std = sd(`50`),
+            min = min(`50`),
+            max = max(`50`))
+
 # Test array differences, block by distance
 model_array <- glm(cbind(success, fail) ~ array + distance, family = binomial, data = det.freq)
-
 
 # Model curve comparison
 model <- glm(cbind(success, fail) ~ distance * array, family = binomial,
              data = det.freq)
 drop1(model, ~., test = 'Chisq')
 
+
+
 # Plotting ----
 library(ggplot2)
-ggplot(data = det.freq) +
-  geom_boxplot(aes(x = distance, y = freq, group = interaction(distance, array),
-                   fill = array)) +
-
 ggplot(data = d_probs) +
   geom_ribbon(aes(x = date, ymax = `25`, ymin = `75`), fill = 'grey70') +
   geom_line(aes(x = date, y = `50`), lwd = 1) +
-  geom_line(aes(x = date, y = `95`), color = 'darkgreen', lwd = 1) +
+  geom_line(aes(x = date, y = `95`), color = 'palegreen3', lwd = 1) +
+  geom_line(aes(x = date, y = `5`), color = 'palevioletred', lwd = 1) +
   labs(x = NULL, y = 'Detection distance (m)') +
   facet_wrap(~ array, nrow = 2) +
+  theme_bw()
+
+ggplot(data = d_probs) +
+  geom_histogram(aes(`50`, fill = array), binwidth = 25, position = 'identity',
+                 alpha = 0.7) +
   theme_bw()
 
 d50plot <- function(array, day){
@@ -196,6 +195,13 @@ d50plot <- function(array, day){
     coord_flip() +
     theme_bw()
 }
+
+# TS modeling ----
+library(forecast)
+fit <- auto.arima(ts(d_probs[d_probs$array == 'MD WEA', '95']), trace = T)
+fit2 <- auto.arima(ts(d_probs[d_probs$array == 'Inner', '95']), trace = T)
+tsdiag(fit) # inspect model fit
+sqrt(fit$sigma2) #stdev
 
 
 # Other data ----
