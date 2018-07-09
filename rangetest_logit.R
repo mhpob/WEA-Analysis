@@ -228,12 +228,14 @@ freq.cast <- reshape2::dcast(data = det.freq, date + array ~ distance,
 rec.cast <- reshape2::dcast(rec.data, date + array ~ Description,
                             fun.aggregate = mean, value.var = 'mean')
 
-env.vars <- full_join(freq.cast, d50) %>% full_join(rec.cast)
+env.vars <- full_join(freq.cast, d_probs) %>% full_join(rec.cast)
 
-GGally::ggpairs(data = env.vars[, c(2, 7, 9:11)], aes(color = array))
+GGally::ggpairs(data = select(env.vars, array, D50, starts_with('Average'), 'Tilt angle'),
+                aes(color = array))+
+  theme_bw()
 
 
-ggplot(data = env.vars, aes(x = `Average noise`, y = dpct, color = array)) +
+ggplot(data = env.vars, aes(x = `Average noise`, y = D50, color = array)) +
   geom_point(size = 3) +
   geom_smooth(method = 'glm',
               method.args = list(family = Gamma(link = 'inverse')),
@@ -269,9 +271,33 @@ met.data <- met.data %>%
 
 env.vars <- left_join(env.vars, met.data)
 
+# Correlations of the variables
+env.vars %>%
+  select(array, D50, 12:28, -station) %>%
+  data.frame %>%
+  split(.$array) %>%
+  lapply(., function(x){
+    as.matrix(x[, -1]) %>%
+      cor %>%
+      (function(y){
+        y[upper.tri(y, diag = T)] <- NA
+        y}) %>%
+      data.frame %>%
+      cbind(., data.frame(var = row.names(.))) %>%
+      tidyr::gather(D50:wtmp, value, -var)
+    }) %>%
+  bind_rows(.id = 'array') %>%
+  filter(abs(value) > 0.5)
+
+# PCA of env vars
+library(vegan)
+pca <- rda(env.vars[env.vars$array == 'MD WEA', c(9, 12:16, 18:27)], scale = T)
+biplot(pca, type = c("text", "points"))
+
+
 ggplot() + geom_point(data = env.vars,
-                      aes(x = wvht, y = d50, color = array))
-pairs(env.vars[env.vars$array == 'Inner', c(7:10, 12, 14:15, 17:22)])
+                      aes(x = wvht, y = `Average noise`, color = array))
+
 
 GGally::ggpairs(data = env.vars, aes(color = array),
                 columns = c('dpct', 'Average noise', 'Average temperature', 'Tilt angle',
