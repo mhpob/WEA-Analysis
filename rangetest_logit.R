@@ -116,7 +116,7 @@ dpct_glm <- function(data, pct = 50){
   dpct[, c('date', 'dpct')]
 }
 
-d_probs <- lapply(list(`5` = 5, `25` = 25, `50` = 50, `75` = 75, `95` = 95),
+d_probs <- lapply(list('D5' = 5, 'D25' = 25, 'D50' = 50, 'D75' = 75, 'D95' = 95),
                   function(x){
                     lapply(array.spl, dpct_glm, x) %>%
                       bind_rows(.id = 'array')
@@ -144,10 +144,10 @@ filter(det.freq, distance != 0) %>%
 # D50 summary
 d_probs %>%
   group_by(array) %>%
-  summarize(mean = mean(`50`),
-            std = sd(`50`),
-            min = min(`50`),
-            max = max(`50`))
+  summarize(mean = mean(D50),
+            std = sd(D50),
+            min = min(D50),
+            max = max(D50))
 
 # Test array differences, block by distance
 model_array <- glm(cbind(success, fail) ~ array + distance, family = binomial, data = det.freq)
@@ -162,33 +162,33 @@ drop1(model, ~., test = 'Chisq')
 # Plotting ----
 library(ggplot2)
 ggplot(data = d_probs) +
-  geom_ribbon(aes(x = date, ymax = `25`, ymin = `75`), fill = 'grey70') +
-  geom_line(aes(x = date, y = `50`), lwd = 1) +
-  geom_line(aes(x = date, y = `95`), color = 'palegreen3', lwd = 1) +
-  geom_line(aes(x = date, y = `5`), color = 'palevioletred', lwd = 1) +
+  geom_ribbon(aes(x = date, ymax = D25, ymin = D75), fill = 'grey70') +
+  geom_line(aes(x = date, y = D50), lwd = 1) +
+  geom_line(aes(x = date, y = D95), color = 'palegreen3', lwd = 1) +
+  geom_line(aes(x = date, y = D5), color = 'palevioletred', lwd = 1) +
   labs(x = NULL, y = 'Detection distance (m)') +
   facet_wrap(~ array, nrow = 2) +
   theme_bw()
 
 ggplot(data = d_probs) +
-  geom_histogram(aes(`50`, fill = array), binwidth = 25, position = 'identity',
+  geom_histogram(aes(D50, fill = array), binwidth = 25, position = 'identity',
                  alpha = 0.7) +
   theme_bw()
 
-d50plot <- function(array, day){
+d50plot <- function(data, array, day){
   array <- enquo(array)
   day <- enquo(day)
-  d50dat <- filter(d50, array == !! array, date == !! day)
+  plot_dat <- filter(data, array == !! array, date == !! day)
 
   ggplot(data = filter(det.freq, array == !! array, date == !! day),
          aes(x = distance, y = freq)) +
     geom_point() +
     geom_smooth(method = 'glm', method.args = list(family = 'binomial'), se = F) +
-    geom_point(data = d50dat,
+    geom_point(data = plot_dat,
                aes(x = d50, y = 0.5), col = 'red', size = 3) +
-    geom_segment(data = d50dat,
+    geom_segment(data = plot_dat,
                  aes(x = 0, y = 0.5, xend = d50, yend = 0.5)) +
-    geom_segment(data = d50dat,
+    geom_segment(data = plot_dat,
                  aes(x = d50, y = 0, xend = d50, yend = 0.5)) +
     lims(x = c(0, 1000), y = c(0, 1)) +
     labs(x = 'Distance', y = 'Frequency of Detection') +
@@ -198,8 +198,8 @@ d50plot <- function(array, day){
 
 # TS modeling ----
 library(forecast)
-fit <- auto.arima(ts(d_probs[d_probs$array == 'MD WEA', '95']), trace = T)
-fit2 <- auto.arima(ts(d_probs[d_probs$array == 'Inner', '95']), trace = T)
+fit <- auto.arima(ts(d_probs[d_probs$array == 'MD WEA', 'D95']), trace = T)
+fit2 <- auto.arima(ts(d_probs[d_probs$array == 'Inner', 'D95']), trace = T)
 tsdiag(fit) # inspect model fit
 sqrt(fit$sigma2) #stdev
 
