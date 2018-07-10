@@ -1,6 +1,9 @@
 library(readxl); library(TelemetryR); library(dplyr)
 
-detections <- vemsort('p:/obrien/biotelemetry/detections')
+cl <- parallel::makeCluster(parallel::detectCores() - 1)
+detections <- vemsort('p:/obrien/biotelemetry/detections',
+                      clust = cl, prog_bar = T)
+parallel::stopCluster(cl)
 
 boem_sb <- detections %>%
   filter(transmitter %in% paste('A69-9002',
