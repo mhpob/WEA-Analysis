@@ -3,14 +3,16 @@ sites <- read_excel('p:/obrien/biotelemetry/md wea habitat/data/vr2ar deployment
 sites <- sites[grepl('201712', sites$Date),]
 
 from <- '2016-11-11T09:00:00Z'
-to <- '202018-04-11T09:00:00Z'
+to <- '2018-04-11T09:00:00Z'
 lat <- round(sites$`Dep Lat_DD`, 3)
 long <- round(sites$`Dep Long_DD`, 3)
 
+
+netCDFurls <- paste0('https://coastwatch.pfeg.noaa.gov/erddap/griddap/jplMURSST41.nc?analysed_sst[(',
+                     from, '):1:(', to, ')][(', lat, '):1:(', lat,
+                     ')][(', long, '):1:(', long, ')]')
+
 # loop doesn't work for some reason, had to open URLs individually in browswer
-# netCDFurls <- paste0('https://coastwatch.pfeg.noaa.gov/erddap/griddap/jplMURSST41.nc?analysed_sst[(',
-#                      from, '):1:(', to, ')][(', lat, '):1:(', lat,
-#                      ')][(', long, '):1:(', long, ')]')
 # for(i in seq_along(sites)){
 #  path <- file.path('p:/obrien/biotelemetry/md wea habitat/data/SST',
 #                                     paste(sites$`Site ID`[i], 'nc', sep = '.'))
