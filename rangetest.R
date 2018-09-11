@@ -1,4 +1,4 @@
-
+library(dplyr)
 # Import range test ping data ----
 rangetestimport <- function(path, pattern){
   filenames <- list.files(path = path, pattern = pattern, full.names = T)
@@ -10,6 +10,7 @@ rangetestimport <- function(path, pattern){
   names(detections) <- c('date.utc', 'receiver', 'transmitter', 't.name',
                          't.serial', 'sensor.value', 'sensor.unit', 'station',
                          'lat', 'long')
+  detections <- detections[grepl('-60', detections$transmitter),]
   detections$date.utc <- as.POSIXct(detections$date.utc,
                                   format = '%Y-%m-%d %H:%M:%S',
                                   tz = 'UTC')
@@ -18,25 +19,48 @@ rangetestimport <- function(path, pattern){
   detections
 }
 
-rangetest <- rbind(
+rangetest_201804 <- rbind(
+  #inner (IS2) range test
   rangetestimport('p:/obrien/biotelemetry/detections/offshore md/Fish Migration/201804',
-                '30[378]'), #inner (IS2) range test
+                  '30[378]'),
+  #wea (AN3) range test
   rangetestimport('p:/obrien/biotelemetry/detections/offshore md/Fish Migration/201804',
-                '30[569]')) #wea (AN3) range test
-
-# Data munging ----
-library(dplyr)
-data <- rangetest %>%
-  filter(date.east > '2017-12-21',
-         date.east < '2018-04-11',
-         grepl('-60', transmitter)) %>%
-  mutate(array = ifelse(grepl('A', station), 'MD WEA', 'Inner'),
-         internal = case_when(grepl('60767', transmitter) ~ 'IS2',
+                  '30[569]')) %>%
+  mutate(internal = case_when(grepl('60767', transmitter) ~ 'IS2',
                               grepl('60771', transmitter) ~ 'IS2_250',
                               grepl('60772', transmitter) ~ 'IS2_800',
+                              grepl('60773', transmitter) ~ 'AN3',
                               grepl('60769', transmitter) ~ 'AN3_250',
-                              grepl('60770', transmitter) ~ 'AN3_800',
-                              grepl('60773', transmitter) ~ 'AN3'),
+                              grepl('60770', transmitter) ~ 'AN3_800'))
+
+# Need to do Aug-downloaded data separately since receivers moved.
+rangetest_201808 <- rbind(
+  #inner (IS2) range test
+  rangetestimport('p:/obrien/biotelemetry/detections/offshore md/Fish Migration/201808',
+                  '30[367]'),
+  #wea (AN3) range test
+  rangetestimport('p:/obrien/biotelemetry/detections/offshore md/Fish Migration/201808',
+                  '30[59]|461'))
+
+
+# Data munging ----
+data <- bind_rows(rangetest_201804, rangetest_201808) %>%
+  distinct(date.utc, receiver, transmitter, .keep_all = T) %>%
+  filter(date.east > '2017-12-21',
+         date.east < '2018-08-08') %>%
+  mutate(array = ifelse(grepl('A', station), 'MD WEA', 'Inner'),
+         internal = case_when(is.na(internal) &
+                                grepl('60767', transmitter) ~ 'IS2',
+                              is.na(internal) &
+                                grepl('60771', transmitter) ~ 'IS2_250',
+                              is.na(internal) &
+                                grepl('60770', transmitter) ~ 'IS2_800',
+                              is.na(internal) &
+                                grepl('60769', transmitter) ~ 'AN3',
+                              is.na(internal) &
+                                grepl('60773', transmitter) ~ 'AN3_250',
+  # There was an error in redeployment: the AN3_800 transmitter was not activated.
+                              T ~ internal),
          day = lubridate::date(date.east),
          hour6 = lubridate::floor_date(date.east, unit = '6hour'))
 
