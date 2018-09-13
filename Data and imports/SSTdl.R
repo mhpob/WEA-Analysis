@@ -2,24 +2,32 @@ library(readxl)
 sites <- read_excel('p:/obrien/biotelemetry/md wea habitat/data/vr2ar deployment_recovery log.xlsx')
 sites <- sites[grepl('201712', sites$Date),]
 
-from <- '2016-11-11T09:00:00Z'
-to <- '2018-04-11T09:00:00Z'
+from <- '2016-11-11'
+to <- '2018-08-10'
+
 lat <- round(sites$`Dep Lat_DD`, 3)
 long <- round(sites$`Dep Long_DD`, 3)
 
 
-netCDFurls <- paste0('https://coastwatch.pfeg.noaa.gov/erddap/griddap/jplMURSST41.nc?analysed_sst[(',
-                     from, '):1:(', to, ')][(', lat, '):1:(', lat,
-                     ')][(', long, '):1:(', long, ')]')
+netCDFurls <- paste0(
+  'https://coastwatch.pfeg.noaa.gov/erddap/griddap/jplMURSST41.nc?analysed_sst[(',
+  from, 'T00:00:00Z):1:(', to, 'T00:00:00Z)][(',
+  lat, '):1:(', lat, ')][(', long, '):1:(', long, ')]')
 
-# loop doesn't work for some reason, had to open URLs individually in browswer
-# for(i in seq_along(sites)){
-#  path <- file.path('p:/obrien/biotelemetry/md wea habitat/data/SST',
-#                                     paste(sites$`Site ID`[i], 'nc', sep = '.'))
-#   download.file(netCDFurls[i],
-#                 destfile = path,
-#                 mode = 'wb')
-# }
+# The next bit can take a while...
+# Needed to use download.file(method = 'libcurl') to make this work. The default
+# (method = 'wininet') timed out. Note that libcurl is optional on windows; if
+# there are issues, use capabilities("libcurl") to make sure libcurl is supported.
+for(i in seq_along(sites)){
+  path <- file.path('p:/obrien/biotelemetry/md wea habitat/data/SST',
+                    paste(sites$`Site ID`[i], 'nc', sep = '.'))
+
+  download.file(netCDFurls[i],
+                destfile = path,
+                method = 'libcurl',
+                mode = 'wb')
+}
+
 
 library('ncdf4')
 sst <- data.frame()
