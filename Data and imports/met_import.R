@@ -10,21 +10,24 @@ hist.read <- function(station, year){
   if(grepl(year, Sys.Date())){
     monthnum <- as.numeric(strftime(Sys.time(), '%m'))
     station <- tolower(station)
-    urls <- c(paste0('http://www.ndbc.noaa.gov/view_text_file.php?filename=',
+    urls <- c(paste0('https://www.ndbc.noaa.gov/view_text_file.php?filename=',
                      station,
-                     seq(1, (monthnum - 2), 1),
+                     seq(1, (monthnum - 3), 1),
                      year,
                      '.txt.gz&dir=data/stdmet/',
-                     month.abb[1:(monthnum - 2)],
+                     month.abb[1:(monthnum - 3)],
                      '/'),
-              paste0('http://www.ndbc.noaa.gov/data/stdmet/',
-                     month.abb[monthnum - 1],
+              paste0('https://www.ndbc.noaa.gov/data/stdmet/',
+                     month.abb[monthnum - 2],
                      '/', station, '.txt'))
-    data <- lapply(urls, data.table::fread, skip = 2, na.strings = c('NA', 'MM'),
-                   col.names = c('year', 'month', 'day', 'hr', 'min', 'wdir',
-                                 'wspd', 'gst', 'wvht', 'dpd', 'apd', 'mwd',
-                                 'pres', 'atmp', 'wtmp', 'dewp', 'vis', 'tide'))
-    data2 <- data.table::fread(paste0('http://www.ndbc.noaa.gov/data/realtime2/',
+    data <- lapply(urls, function(x){
+      tryCatch(
+        data.table::fread(x, skip = 2, na.strings = c('NA', 'MM'),
+                          col.names = c('year', 'month', 'day', 'hr', 'min', 'wdir',
+                                        'wspd', 'gst', 'wvht', 'dpd', 'apd', 'mwd',
+                                        'pres', 'atmp', 'wtmp', 'dewp', 'vis', 'tide')),
+        error = function(e) NULL)})
+    data2 <- data.table::fread(paste0('https://www.ndbc.noaa.gov/data/realtime2/',
                                       toupper(station), '.txt'),
                     skip = 2, drop = 18, na.strings = c('NA', 'MM'),
                     col.names = c('year', 'month', 'day', 'hr', 'min', 'wdir',
@@ -34,7 +37,7 @@ hist.read <- function(station, year){
     data <- rbind(data, data2)
 
   } else{
-    url <- paste0('http://www.ndbc.noaa.gov/view_text_file.php?filename=',
+    url <- paste0('https://www.ndbc.noaa.gov/view_text_file.php?filename=',
                   station, 'h', year,
                   '.txt.gz&dir=data/historical/stdmet/')
     data <- data.table::fread(url, skip = 2, na.strings = c('NA', 'MM'),
