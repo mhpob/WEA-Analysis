@@ -33,7 +33,8 @@ ggplot(data = ribbon) +
   geom_ribbon(aes(x = date, ymin = min, ymax = max,
                   group = array, fill = array), alpha = 0.8, color = 'gray') +
   labs(x = NULL, y = expression(Delta*T~'(°C)'), fill = NULL) +
-  scale_x_date(date_breaks = '2 month', date_labels = '%b-%Y') +
-  theme_bw()
+  scale_x_date(date_breaks = '2 month', date_labels = '%b%y') +
+  theme_bw()+
+  theme(text = element_text(size = 22))
 
 
