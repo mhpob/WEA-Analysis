@@ -209,11 +209,11 @@ d50plot <- function(data, array, day){
     geom_point() +
     geom_smooth(method = 'glm', method.args = list(family = 'binomial'), se = F) +
     geom_point(data = plot_dat,
-               aes(x = d50, y = 0.5), col = 'red', size = 3) +
+               aes(x = D50, y = 0.5), col = 'red', size = 3) +
     geom_segment(data = plot_dat,
-                 aes(x = 0, y = 0.5, xend = d50, yend = 0.5)) +
+                 aes(x = 0, y = 0.5, xend = D50, yend = 0.5)) +
     geom_segment(data = plot_dat,
-                 aes(x = d50, y = 0, xend = d50, yend = 0.5)) +
+                 aes(x = D50, y = 0, xend = D50, yend = 0.5)) +
     lims(x = c(0, 1000), y = c(0, 1)) +
     labs(x = 'Distance', y = 'Frequency of Detection') +
     coord_flip() +
@@ -236,8 +236,8 @@ rec.data <- readRDS("data and imports/rec_events.rds")
 rec.data <- rec.data %>%
   mutate(date.local = .POSIXct(Date.Time, tz = 'America/New_York')) %>%
   filter(date.local > '2017-12-21',
-         date.local < '2018-04-11',
-         grepl('30[3-9]', Receiver),
+         date.local < '2018-08-09',
+         grepl('IS2|AN3', Site),
          grepl('Average [nt]|Tilt', Description)) %>%
   mutate(array = ifelse(grepl('A', Site), 'MD WEA', 'Inner'),
          Data = as.numeric(Data),
@@ -254,9 +254,10 @@ rec.cast <- reshape2::dcast(rec.data, date + array ~ Description,
 
 env.vars <- full_join(freq.cast, d_probs) %>% full_join(rec.cast)
 
-GGally::ggpairs(data = select(env.vars, array, D50, starts_with('Average'), 'Tilt angle'),
-                aes(color = array))+
-  theme_bw()
+# GGally::ggpairs(data = select(env.vars, array, D50, starts_with('Average'),
+                              # 'Tilt angle'),
+                # aes(color = array))+
+  # theme_bw()
 
 
 ggplot(data = env.vars, aes(x = `Average noise`, y = D50, color = array)) +
@@ -286,7 +287,7 @@ env.vars <- env.vars %>%
 met.data <- readRDS('data and imports/ndbc_data.rds')
 met.data <- met.data %>%
   filter(date.time > '2017-12-21',
-         date.time < '2018-04-11',
+         date.time < '2018-08-09',
          station == '44009') %>%
   mutate(date = lubridate::date(date.time)) %>%
   group_by(date, station) %>%
@@ -294,6 +295,7 @@ met.data <- met.data %>%
   select(-date.time)
 
 env.vars <- left_join(env.vars, met.data)
+# saveRDS(env.vars, 'data and imports/rangetest_logit_data.RDS')
 
 # Correlations of the variables
 env.vars %>%
@@ -332,8 +334,8 @@ GGally::ggpairs(data = env.vars, aes(color = array),
 # Drop apd and dpd in favor of Average noise
 # Drop gst and wvht in favor of wspd
 GGally::ggpairs(data = env.vars, aes(color = array),
-                columns = c('dpct', 'Average noise', 'Average temperature', 'Tilt angle',
-                            'dt', 'wdir', 'wspd', 'mwd', 'pres', 'atmp'))
+                columns = c('D50', 'Average noise', 'Average temperature', 'Tilt angle',
+                            'dt', 'sst', 'wdir', 'wspd', 'mwd', 'pres', 'atmp'))
 # Clean up
 rm(freq.cast, met.data, rec.cast, sst, i)
 
