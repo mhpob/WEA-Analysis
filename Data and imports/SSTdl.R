@@ -3,7 +3,7 @@ sites <- read_excel('p:/obrien/biotelemetry/md wea habitat/data/vr2ar deployment
 sites <- sites[grepl('201712', sites$Date),]
 
 from <- '2016-11-11'
-to <- '2018-08-10'
+to <- '2018-12-04'
 
 lat <- round(sites$`Dep Lat_DD`, 3)
 long <- round(sites$`Dep Long_DD`, 3)
@@ -18,7 +18,7 @@ netCDFurls <- paste0(
 # Needed to use download.file(method = 'libcurl') to make this work. The default
 # (method = 'wininet') timed out. Note that libcurl is optional on windows; if
 # there are issues, use capabilities("libcurl") to make sure libcurl is supported.
-for(i in seq_along(sites)){
+for(i in seq_len(nrow(sites))){
   path <- file.path('p:/obrien/biotelemetry/md wea habitat/data/SST',
                     paste(sites$`Site ID`[i], 'nc', sep = '.'))
 
