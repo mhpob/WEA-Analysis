@@ -245,7 +245,7 @@ rec.data <- readRDS("data and imports/rec_events.rds")
 rec.data <- rec.data %>%
   mutate(date.local = .POSIXct(Date.Time, tz = 'America/New_York')) %>%
   filter(date.local > '2017-12-21',
-         date.local < '2018-08-09',
+         date.local < '2018-12-05',
          grepl('IS2|AN3', Site),
          grepl('Average [nt]|Tilt', Description)) %>%
   mutate(array = ifelse(grepl('A', Site), 'MD WEA', 'Inner'),
@@ -296,7 +296,7 @@ env.vars <- env.vars %>%
 met.data <- readRDS('data and imports/ndbc_data.rds')
 met.data <- met.data %>%
   filter(date.time > '2017-12-21',
-         date.time < '2018-08-09',
+         date.time < '2018-12-05',
          station == '44009') %>%
   mutate(date = lubridate::date(date.time)) %>%
   group_by(date, station) %>%
