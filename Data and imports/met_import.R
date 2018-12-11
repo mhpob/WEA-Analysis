@@ -73,7 +73,8 @@ buoy.2016 <- hist.read('44009', 2016)
 buoy.2017 <- hist.read('44009', 2017)
 buoy.2018 <- hist.read('44009', 2018)
 
-met.data <- rbind(buoy.2016, buoy.2017, buoy.2018, ocmd.2016, ocmd.2017, ocmd.2018)
+met.data <- rbind(buoy.2016, buoy.2017, buoy.2018, ocmd.2016, ocmd.2017, ocmd.2018) %>%
+  filter(!is.na(date.time))
 
 saveRDS(met.data, file = 'data and imports/NDBC_data.rds')
 rm(buoy.2016, buoy.2017, buoy.2018, ocmd.2016, ocmd.2017, ocmd.2018)
