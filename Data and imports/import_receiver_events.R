@@ -4,9 +4,10 @@ rec_deployments <- readxl::read_excel(
 
 library(lubridate); library(dplyr)
 rec_deployments <- rec_deployments %>%
-  filter(`Cruise ID` %in% c(201611, 201703, 201708, 201712),
+  filter(`Cruise ID` %in% c(201611, 201703, 201708, 201712,
+                            201804, 201808, 201812),
          !is.na(`Dep VR2AR`)) %>%
-  mutate(`Dep VR2AR` = paste('VR2AR', `Dep VR2AR`, sep = '-'))%>%
+  mutate(`Dep VR2AR` = paste('VR2AR', `Dep VR2AR`, sep = '-')) %>%
   select(`Cruise ID`, Date, `Site ID`, `Dep VR2AR`, `Dep Lat_DD`, `Dep Long_DD`)
 
 # Load receiver events, merge with location information
@@ -22,20 +23,28 @@ rec_events_201712 <- read.csv(
 rec_events_201804 <- read.csv(
   'p:/obrien/biotelemetry/md wea habitat/data/wea_recevents_201712_201804.csv',
   stringsAsFactors = F)
+rec_events_201808 <- read.csv(
+  'p:/obrien/biotelemetry/md wea habitat/data/wea_recevents_201804_201808.csv',
+  stringsAsFactors = F)
+rec_events_201812 <- read.csv(
+  'p:/obrien/biotelemetry/md wea habitat/data/wea_recevents_201808_201812.csv',
+  stringsAsFactors = F)
 
 rec_events <- rbind(rec_events_201703, rec_events_201708, rec_events_201712,
-                    rec_events_201804)
+                    rec_events_201804, rec_events_201808, rec_events_201812)
 
 rec_events <- rec_events %>%
   distinct(Date.Time, Receiver, Description, .keep_all = T) %>%
   mutate(Date.Time = lubridate::ymd_hms(Date.Time))
 
-cruise_id_key <- filter(rec_events, Description =='Data Upload') %>%
-  mutate(Cruise = substr(Data, 14,19),
+cruise_id_key <- filter(rec_events, Description == 'Data Upload') %>%
+  mutate(Cruise = substr(Data, 14, 19),
          Cruise = case_when(Cruise == 201703 ~ 201611,
                             Cruise == 201708 ~ 201703,
                             Cruise == 201712 ~ 201708,
-                            Cruise == 201804 ~ 201712)) %>%
+                            Cruise == 201804 ~ 201712,
+                            Cruise == 201808 ~ 201804,
+                            Cruise == 201812 ~ 201808)) %>%
   group_by(Receiver, Cruise) %>%
   summarize(min = min(Date.Time),
             max = max(Date.Time)) %>%
