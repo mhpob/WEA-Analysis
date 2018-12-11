@@ -33,21 +33,27 @@ rangetest_201804 <- rbind(
                               grepl('60769', transmitter) ~ 'AN3_250',
                               grepl('60770', transmitter) ~ 'AN3_800'))
 
-# Need to do Aug-downloaded data separately since receivers moved.
-rangetest_201808 <- rbind(
+# Need to do Aug18 & Dec18-downloaded data separately since receivers moved. Not
+# assigning sites to transmitters here; going to use the NAs above as a signal to
+# reassign after movement.
+rangetest_201812 <- rbind(
   #inner (IS2) range test
   rangetestimport('p:/obrien/biotelemetry/detections/offshore md/Fish Migration/201808',
                   '30[367]'),
+  rangetestimport('p:/obrien/biotelemetry/detections/offshore md/Fish Migration/201812',
+                  '30[367]'),
   #wea (AN3) range test
   rangetestimport('p:/obrien/biotelemetry/detections/offshore md/Fish Migration/201808',
+                  '30[59]|461'),
+  rangetestimport('p:/obrien/biotelemetry/detections/offshore md/Fish Migration/201812',
                   '30[59]|461'))
 
 
 # Data munging ----
-data <- bind_rows(rangetest_201804, rangetest_201808) %>%
+data <- bind_rows(rangetest_201804, rangetest_201812) %>%
   distinct(date.utc, receiver, transmitter, .keep_all = T) %>%
   filter(date.east > '2017-12-21',
-         date.east < '2018-08-08') %>%
+         date.east < '2018-12-05') %>%
   mutate(array = ifelse(grepl('A', station), 'MD WEA', 'Inner'),
          internal = case_when(is.na(internal) &
                                 grepl('60767', transmitter) ~ 'IS2',
@@ -59,7 +65,10 @@ data <- bind_rows(rangetest_201804, rangetest_201808) %>%
                                 grepl('60769', transmitter) ~ 'AN3',
                               is.na(internal) &
                                 grepl('60773', transmitter) ~ 'AN3_250',
-  # There was an error in redeployment: the AN3_800 transmitter was not activated.
+                              is.na(internal) &
+                                grepl('60925', transmitter) ~ 'AN3_800',
+           # There was an error in redeployment from 201804-201808:
+           # the AN3_800 transmitter was not activated.
                               T ~ internal),
          day = lubridate::date(date.east),
          hour6 = lubridate::floor_date(date.east, unit = '6hour'))
@@ -157,15 +166,16 @@ ggplot(data = det.freq, aes(x = as.Date(date), y = Freq,
 
 ggplot() +
   geom_hline(aes(yintercept = 0.5)) +
-  geom_boxplot(data = det.freq,aes(x = distance, y = freq, group = interaction(distance, array),
+  geom_boxplot(data = det.freq,
+               aes(x = distance, y = Freq, group = interaction(distance, array),
                    fill = array)) +
   scale_fill_manual(values = c('#f8766d', '#00ba38')) +
-  geom_smooth(data = det.freq, aes(x = distance, y = freq, lty = array),
+  geom_smooth(data = det.freq, aes(x = distance, y = Freq, lty = array),
               method = 'glm', method.args = list(family = 'binomial')) +
-  geom_smooth(data = det.freq, aes(x = distance, y = freq, lty = array), col = 'green',
+  geom_smooth(data = det.freq, aes(x = distance, y = Freq, lty = array), col = 'green',
               method = 'glm',
               method.args = list(family = binomial(link = 'probit'))) +
-  geom_smooth(data = det.freq, aes(x = distance, y = freq, lty = array), col = 'red',
+  geom_smooth(data = det.freq, aes(x = distance, y = Freq, lty = array), col = 'red',
               method = 'nls',
               method.args = list(formula = y ~ 1 / (1 + exp(-k * (x - d50))),
                                  start = list(k = -0.01, d50 = 500)),

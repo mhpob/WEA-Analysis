@@ -1,0 +1,72 @@
+---
+title: "Removing outliers from D50 time series"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+```{r, warning = F, message = F}
+library(tsoutliers)
+library(dplyr)
+
+# Read in data
+data <- readRDS('data and imports/rangetest_logit_data.rds')
+names(data) <- tolower(gsub(' ', '_', names(data)))
+
+# D50 time series calculated from logit modeling:
+d50_wea <- ts(na.omit(data[data$array == 'MD WEA', 'd50']))
+d50_inner <- ts(na.omit(data[data$array == 'Inner', 'd50']))
+```
+
+There seem to be some outliers, mostly in the WEA series.
+
+```{r}
+plot(cbind(d50_inner, d50_wea), main = NA)
+```
+
+I want to remove these before using predictive models (GAMs). Using the default cval (3.45) identifies far more outliers than I feel are realistic.
+
+```{r}
+tso_wea <- tso(d50_wea, types = 'AO')
+plot(tso_wea)
+```
+
+I believe that part of this is due to the clear level shift at 152.
+
+```{r, warning = F}
+tso(d50_wea, types = 'LS')
+```
+
+If we just take the series after the shift, only four outliers are detected.
+
+```{r}
+wea_shift <- ts(d50_wea[152:230])
+wea_shift <- tso(wea_shift, types = 'AO')
+plot(wea_shift)
+```
+
+
+Because of this, I'm bumping the cval to 4.
+```{r}
+tso_wea <- tso(d50_wea, types = 'AO', cval = 4)
+plot(tso_wea)
+
+tso_inner <- tso(d50_inner, types = 'AO', cval = 4)
+plot(tso_inner)
+```
+
+Better. Adjust the original data.
+
+```{r}
+data <- data %>%
+  filter(!is.na(d50)) %>% 
+  arrange(array) %>% 
+  mutate(d50_adjust = c(tso_inner$yadj, tso_wea$yadj))
+
+saveRDS(data, 'data and imports/rangetest_logit_data_adj.RDS')
+```
+
