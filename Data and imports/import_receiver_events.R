@@ -72,6 +72,23 @@ rec_events <- left_join(rec_events, rec_deployments,
 names(rec_events) <- c('Date.Time', 'Receiver', 'Description', 'Data', 'Units',
                        'Tend.Cruise', 'C.Date', 'Site', 'Lat', 'Long')
 
+# There are issues with the tilt angle of receivers due to deployment differences
+# which create different baselines. Calculate the median per receiver per deployment
+# period, and subtract it from every value. Then take the absolute value.
+tilt <- rec_events %>%
+  filter(Description == 'Tilt angle') %>%
+  group_by(Receiver, Tend.Cruise) %>%
+  summarize(med.tilt = median(as.numeric(Data), na.rm = T)) %>%
+  right_join(filter(rec_events, Description == 'Tilt angle')) %>%
+  mutate(Data = abs(as.numeric(Data) - med.tilt),
+         Data = as.character(Data)) %>%
+  select('Date.Time', 'Receiver', 'Description', 'Data', 'Units',
+         'Tend.Cruise', 'C.Date', 'Site', 'Lat', 'Long')
+
+rec_events <- rec_events %>%
+  filter(Description != 'Tilt angle') %>%
+  bind_rows(tilt)
+
 rec_events <- rec_events[, names(rec_events) != 'C.Date']
 
 saveRDS(rec_events, file = 'data and imports/rec_events.rds')
