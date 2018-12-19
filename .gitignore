@@ -36,6 +36,8 @@ vignettes/*.pdf
 # Misc data files
 *.csv
 *.rds
+*.nb.html
+*.docx
 
 # Animation output
 images/
