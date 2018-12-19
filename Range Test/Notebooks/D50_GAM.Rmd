@@ -1,0 +1,138 @@
+---
+title: "Gammin'"
+output: html_notebook
+---
+```{r setup, echo = FALSE}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+Let's GAM it up
+```{r}
+library(mgcv)
+data <- readRDS('data and imports/rangetest_no_outliers.RDS')
+```
+
+Compare model with and without random array term.
+```{r}
+f_mod <- gamm(d50_adj ~ s(average_temperature, bs = 'cr') +
+            s(average_noise, bs = 'cr') +
+            s(tilt_angle, bs = 'cr'),
+            method = 'REML',
+         data = data)
+
+
+r_mod <- gamm(d50_adj ~ s(average_temperature, bs = 'cr') +
+            s(average_noise, bs = 'cr') +
+            s(tilt_angle, bs = 'cr'),
+         random = list(array = ~ 1),
+            method = 'REML',
+         data = data)
+
+
+anova(f_mod$lme, r_mod$lme)
+
+```
+
+**need to update this. random might be needed after tilt adjustment**
+
+This is barely significant when using REML, and not significant if using other methods. There's probably no advantage to including random array term. Refit using `gam`.
+```{r}
+mod <- gam(d50_adj ~ s(average_temperature, bs = 'cr') +
+            s(average_noise, bs = 'cr') +
+            s(tilt_angle, bs = 'cr'),
+           method = 'REML',
+         data = data, select = T)
+summary(mod)
+plot(mod, pages = 1, shade = T)
+```
+```{r}
+gam.check(mod)
+```
+
+
+Keep chugging. Try different error structure? I'm choosing the [Gamma distribution](https://en.wikipedia.org/wiki/Gamma_distribution) because:
+*  Response variable (D50) cannot be negative
+*  The variance of the response variable seems to increase with increasing mean.
+```{r}
+mod_gamma <- gam(d50_adj ~ s(average_temperature, bs = 'cs') +
+            s(average_noise, bs = 'cs') +
+            s(tilt_angle, bs = 'cs'),
+            family = Gamma(),
+            method = 'REML',
+         data = data, select = T)
+summary(mod_gamma)
+plot(mod_gamma)
+```
+
+```{r}
+AIC(mod_gamma)
+gam.check(mod_gamma)
+```
+
+
+```{r}
+vis.gam(mod_gamma, type = 'response', theta = 130)
+```
+
+Okay, I really want to see if I can plot the smooths on the response scale. I'm following the instructions on [this Cross Validated answer](https://stats.stackexchange.com/questions/166553/creating-marginal-plots-when-using-mgcv-gam-package-in-r). First up, I'm checking temperature. Keeping noise at its median and tilt at its mean.
+
+```{r}
+
+
+
+bwt_fit <- data.frame(average_temperature = seq(min(data$average_temperature),
+                                                max(data$average_temperature),
+                                                length = 100),
+                      average_noise = median(data$average_noise),
+                      tilt_angle = mean(data$tilt_angle))
+bwt_smooth <- predict(mod_gamma, bwt_fit, type = 'response', se.fit = T)
+
+
+plot(bwt_fit$average_temperature, bwt_smooth$fit, type = 'l')
+lines(bwt_fit$average_temperature, bwt_smooth$fit + 2 * bwt_smooth$se.fit, lty = 2)
+lines(bwt_fit$average_temperature, bwt_smooth$fit - 2 * bwt_smooth$se.fit, lty = 2)
+```
+
+That kinda worked. Try noise with BWT and tilt at their mean.
+```{r}
+noise_fit <- data.frame(average_temperature = mean(data$average_temperature),
+                      average_noise = seq(min(data$average_noise),
+                                          max(data$average_noise),
+                                          length = 100),
+                      tilt_angle = mean(data$tilt_angle))
+noise_smooth <- predict(mod_gamma, noise_fit, type = 'response', se.fit = T)
+
+
+plot(noise_fit$average_noise, noise_smooth$fit, type = 'l')
+lines(noise_fit$average_noise, noise_smooth$fit + 2 * noise_smooth$se.fit, lty = 2)
+lines(noise_fit$average_noise, noise_smooth$fit - 2 * noise_smooth$se.fit, lty = 2)
+```
+
+Now tilt; BWT at mean, noise at median. 
+```{r}
+tilt_fit <- data.frame(average_temperature = mean(data$average_temperature),
+                       average_noise = median(data$average_noise),
+                       tilt_angle = seq(min(data$tilt_angle),
+                                        max(data$tilt_angle),
+                                        length = 100))
+tilt_smooth <- predict(mod_gamma, tilt_fit, type = 'response', se.fit = T)
+
+
+plot(tilt_fit$tilt_angle, tilt_smooth$fit, type = 'l')
+lines(tilt_fit$tilt_angle, tilt_smooth$fit + 2 * tilt_smooth$se.fit, lty = 2)
+lines(tilt_fit$tilt_angle, tilt_smooth$fit - 2 * tilt_smooth$se.fit, lty = 2)
+```
+
+
+```{r}
+mod_gamma_mix <- gam(d50_adj ~ s(average_temperature, bs = 'cs',
+                                      by  = as.factor(array)) +
+            s(average_noise, bs = 'cs',
+                                      by  = as.factor(array)) +
+            s(tilt_angle, bs = 'cs',
+                                      by  = as.factor(array)),
+            family = Gamma(),
+            method = 'REML',
+         data = data, select = T)
+summary(mod_gamma_mix)
+```

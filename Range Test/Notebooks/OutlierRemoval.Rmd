@@ -1,72 +1,133 @@
 ---
 title: "Removing outliers from D50 time series"
-output:
-  html_document:
-    df_print: paged
+author: "Mike O'Brien"
+date: 'Dec 11, 2018'
+output: html_notebook
 ---
-
 ```{r setup, echo = FALSE}
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 ```
-
-```{r, warning = F, message = F}
-library(tsoutliers)
-library(dplyr)
-
-# Read in data
+```{r}
 data <- readRDS('data and imports/rangetest_logit_data.rds')
 names(data) <- tolower(gsub(' ', '_', names(data)))
-
-# D50 time series calculated from logit modeling:
-d50_wea <- ts(na.omit(data[data$array == 'MD WEA', 'd50']))
-d50_inner <- ts(na.omit(data[data$array == 'Inner', 'd50']))
 ```
 
-There seem to be some outliers, mostly in the WEA series.
+## The need to remove outliers
+The WEA array is much more noisy than the Inner array, and there seem to be two really big outliers where the D50 model seems to have broken. Before I move into predictive modeling of D50, these outliers need to be removed.
 
 ```{r}
-plot(cbind(d50_inner, d50_wea), main = NA)
+plot.ts(cbind('MD WEA' = data[data$array == 'MD WEA', 'd50'],
+              'Inner' = data[data$array == 'Inner', 'd50']),
+        main = 'Raw D50 time series')
 ```
 
-I want to remove these before using predictive models (GAMs). Using the default cval (3.45) identifies far more outliers than I feel are realistic.
+There are two methods for finding and replacing time series outliers: `tsoutliers::tso` ('intervention analysis') and `forecast::tsclean` (Friedman's "super smoother"). Run the intervention analysis first.
 
 ```{r}
-tso_wea <- tso(d50_wea, types = 'AO')
-plot(tso_wea)
+d50_wea <- ts(data[data$array == 'MD WEA', 'd50'])
+
+interv_wea <- tsoutliers::tso(d50_wea, types = 'AO',
+               tsmethod = 'auto.arima',
+               maxit.iloop = 10, maxit.oloop = 10)
+
+plot(interv_wea)
 ```
 
-I believe that part of this is due to the clear level shift at 152.
-
-```{r, warning = F}
-tso(d50_wea, types = 'LS')
-```
-
-If we just take the series after the shift, only four outliers are detected.
-
+This removes the two big outliers, but seems to replace the large positive outlier with another outlier.
 ```{r}
-wea_shift <- ts(d50_wea[152:230])
-wea_shift <- tso(wea_shift, types = 'AO')
-plot(wea_shift)
+plot(interv_wea$yadj,
+     main = 'Intervention-Adjusted Time Series',
+     ylab = 'D50 (m)')
 ```
 
-
-Because of this, I'm bumping the cval to 4.
+Using the super smoother also results in weird behavior, just inserting a flat line through that section of the time series.
 ```{r}
-tso_wea <- tso(d50_wea, types = 'AO', cval = 4)
-plot(tso_wea)
-
-tso_inner <- tso(d50_inner, types = 'AO', cval = 4)
-plot(tso_inner)
+smu_wea <- forecast::tsclean(d50_wea)
+plot(smu_wea,
+     main = 'Smoother-Adjusted Time Series',
+     ylab = 'D50 (m)')
 ```
 
-Better. Adjust the original data.
-
+Here's what they look like put together.
 ```{r}
-data <- data %>%
-  filter(!is.na(d50)) %>% 
-  arrange(array) %>% 
-  mutate(d50_adjust = c(tso_inner$yadj, tso_wea$yadj))
-
-saveRDS(data, 'data and imports/rangetest_logit_data_adj.RDS')
+plot.ts(cbind('Original' = d50_wea,
+              'Intervention' = interv_wea$yadj,
+              'Smoother' = smu_wea),
+        main = 'Original series and outlier removal methods')
 ```
+
+## The need to preprocess the data
+It seems that the excessively large/negative outliers (one is 14km, the other -7km) are messing with the performance of the outlier detection algorithms. I am struggling with how to deal with this, but I've decided to preprocess the data before running the unsupervised outlier detection.
+
+*   If a D50 value is greater than 4xs the values before *and* after it,
+*   Or, if a D50 value is negative,
+*   Replace with the mean of the values before and after it.
+
+```{r include=FALSE}
+library(dplyr)
+data_adj <- data %>%
+  group_by(array) %>%
+  mutate_at(vars(grep('d\\d\\d', names(.))),
+            funs(ifelse((. > (4 * lead(.)) & . > (4 * lag(.))) |
+                          . <= 0,
+                        ((lag(.) + lead(.)) / 2), .)))
+
+d50_wea_adj <- ts(data_adj[data_adj$array == 'MD WEA', 'd50'])
+
+interv_wea_adj <- tsoutliers::tso(d50_wea_adj, types = 'AO',
+               tsmethod = 'auto.arima',
+               maxit.iloop = 10, maxit.oloop = 10)
+
+smu_wea_adj <- forecast::tsclean(d50_wea_adj)
+```
+
+This doesn't seem to change the performance of the intervention algorithm all that much, but the performance of the smoother is much more promising, with the largest values still less than 2km.
+```{r}
+plot.ts(cbind('Original' = d50_wea,
+              'Processed' = d50_wea_adj,
+              'Intervention' = interv_wea_adj$yadj,
+              'Smoother' = smu_wea_adj),
+        main = 'Preprocessed series and outlier removal methods')
+```
+
+## Remove outliers
+Lumping everything together:
+```{r}
+data_adj <- data %>%
+  group_by(array) %>%
+  mutate_at(vars(grep('d\\d\\d', names(.))),
+            funs(adj = ifelse((. > (4 * lead(.)) & . > (4 * lag(.))) |
+                                   . <= 0,
+                                 ((lag(.) + lead(.)) / 2), .))) %>% 
+  mutate_at(vars(grep('_adj', names(.))),
+            funs(forecast::tsclean(.)))
+
+```
+```{r}
+plot_func <- function(arr){
+  plot(ts(data_adj[data_adj$array == arr, 'd50_adj']),
+       type = 'n',
+       ylab = 'D50 (m)',
+       main = arr)
+  lines(ts(data_adj[data_adj$array == arr, 'd50']), lwd = 2)
+  lines(ts(data_adj[data_adj$array == arr, 'd50_adj']), col = 'red')
+}
+
+plot_func('MD WEA')
+plot_func('Inner')
+```
+
+```{r, include=FALSE}
+saveRDS(data_adj, 'data and imports/rangetest_no_outliers.RDS')
+```
+
+
+
+
+
+
+
+
+
+
 

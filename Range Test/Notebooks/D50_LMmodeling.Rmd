@@ -1,0 +1,278 @@
+---
+title: "D50 Predictive Modeling: Mixed Effects"
+author: "Mike O'Brien"
+date: 'Dec 11, 2018'
+output: html_notebook
+---
+```{r setup, echo = FALSE}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+Everything from here on out assumes that we're working with normally destributed data, i.e., this analysis isn't generalized. I'm being completely honest: I'm just following the methods outlined in Chapters 4 and 5 of [Zuur et al. 2009](http://highstat.com/index.php/mixed-effects-models-and-extensions-in-ecology-with-r)
+```{r}
+data <- readRDS('data and imports/rangetest_no_outliers.RDS')
+wea <- ts(data[data$array == 'MD WEA',]$'d50_adj')
+inn <- ts(data[data$array == 'Inner',]$'d50_adj')
+
+plot(cbind('MD WEA' = wea, 'Inner' = inn),
+     main = 'D50 (m)')
+```
+
+The global responses don't look normally-distributed.
+```{r}
+hist(wea)
+hist(inn)
+```
+But there looks like there was a change in statistical properties in both series around time 150 and 225.
+```{r}
+hist(wea[1:150])
+hist(wea[151:225])
+hist(wea[225:349])
+```
+```{r}
+hist(inn[1:150])
+hist(inn[151:225])
+hist(inn[225:349])
+```
+These look like they *may* be normally distributed in sections, but also show that we're probably going to have to describe the variance structure as changing through time to get the best model. The normality assumption isn't crucial, so we'll see what happens if we play this whole thing out assuming normality.
+
+# Internal-receiver-based model
+## Explanatory Variables
+Lets look at the time series explanatory variables that are recorded by the receiver:
+```{r}
+plot.ts(cbind('BWT' = data[data$array == 'MD WEA',][['average_temperature']],
+              'Tilt' = data[data$array == 'MD WEA',][['tilt_angle']],
+              'Noise' = data[data$array == 'MD WEA',][['average_noise']]),
+        main = 'Receiver-recorded variables, MD WEA')
+
+plot.ts(cbind('BWT' = data[data$array == 'Inner',][['average_temperature']],
+              'Tilt' = data[data$array == 'Inner',][['tilt_angle']],
+              'Noise' = data[data$array == 'Inner',][['average_noise']]),
+        main = 'Receiver-recorded variables, Inner')
+```
+
+Luckily, they don't seem to be collinear:
+```{r}
+cor(data[data$array == 'MD WEA',
+         names(data) %in% c('average_temperature', 'tilt_angle', 'average_noise')])
+
+pairs(data[data$array == 'MD WEA',
+           names(data) %in% c('average_temperature', 'tilt_angle', 'average_noise')],
+      main = 'MD WEA')
+```
+
+```{r}
+cor(data[data$array == 'Inner',
+         names(data) %in% c('average_temperature', 'tilt_angle', 'average_noise')])
+
+pairs(data[data$array == 'Inner',
+           names(data) %in% c('average_temperature', 'tilt_angle', 'average_noise')],
+      main = 'Inner')
+```
+
+
+## Modeling
+```{r}
+library(nlme)
+
+f_mod <- nlme::gls(d50_adj ~ average_temperature*average_noise*tilt_angle,
+                   data = data)
+r_mod <- nlme::lme(d50_adj ~ average_temperature*average_noise*tilt_angle,
+                   random = ~1 | array,
+                   data = data)
+
+anova(f_mod, r_mod)
+```
+Model with random array term has better fit; L = 45.91 (*df* = 1, *p* < 0.0001).
+```{r}
+summary(r_mod)
+```
+
+Variances aren't homogenous. See if we can fix that and get a better model.
+```{r}
+plot(r_mod)
+plot(data$average_temperature, resid(r_mod))
+plot(data$tilt_angle, resid(r_mod))
+plot(data$average_noise, resid(r_mod))
+```
+
+### Choosing variance structure
+#### Fixed Variance structure
+We're going to update the full model (containing all terms and a random `array` effect) using different variance structures. Note that these two do the same thing:
+```{r}
+mod_fvar <- nlme::lme(d50_adj ~ average_temperature*average_noise*tilt_angle,
+                      random = ~1 | array,
+                      data = data,
+                      weights = nlme::varFixed(~ average_temperature +
+                                                 average_noise + 
+                                                 tilt_angle))
+mod_fvar <- update(r_mod,
+                   .~., # this says to keep the formula's LHS and RHS the same
+                   weights = nlme::varFixed(~ average_temperature +
+                                              average_noise + 
+                                              tilt_angle))
+```
+I'm just going to use the `update` shorthand from here on out.
+```{r}
+mod_fvar_TN <- update(r_mod, .~.,
+                      weights = nlme::varFixed(~ average_temperature +
+                                                 average_noise))
+mod_fvar_TA <- update(r_mod, .~.,
+                      weights = nlme::varFixed(~ average_temperature +
+                                                 tilt_angle))
+mod_fvar_T <- update(r_mod, .~.,
+                     weights = nlme::varFixed(~ average_temperature))
+
+mod_fvar_NA <- update(r_mod, .~.,
+                      weights = nlme::varFixed(~ average_noise + 
+                                                 tilt_angle))
+mod_fvar_N <- update(r_mod, .~.,
+                     weights = nlme::varFixed(~ average_noise))
+
+
+mod_fvar_A <- update(r_mod, .~.,
+                     weights = nlme::varFixed(~ tilt_angle))
+
+
+
+AIC(r_mod, mod_fvar, mod_fvar_TN, mod_fvar_TA, mod_fvar_T, mod_fvar_NA,
+    mod_fvar_N, mod_fvar_A)
+```
+
+Looks like the model that has variance proportional to temperature is best of those with fixed variance structure.
+
+#### VarPower variance structure
+```{r}
+mod_pvar <- update(r_mod, .~.,
+                   weights = nlme::varPower(form = ~ average_temperature +
+                                              average_noise + 
+                                              tilt_angle))
+
+mod_pvar_TN <- update(r_mod, .~.,
+                      weights = nlme::varPower(form = ~ average_temperature +
+                                                 average_noise))
+mod_pvar_TA <- update(r_mod, .~.,
+                      weights = nlme::varPower(form = ~ average_temperature +
+                                                 tilt_angle))
+mod_pvar_T <- update(r_mod, .~.,
+                     weights = nlme::varPower(form = ~ average_temperature))
+
+mod_pvar_NA <- update(r_mod, .~.,
+                      weights = nlme::varPower(form = ~ average_noise + 
+                                                 tilt_angle))
+mod_pvar_N <- update(r_mod, .~.,
+                     weights = nlme::varPower(form = ~ average_noise))
+
+
+mod_pvar_A <- update(r_mod, .~.,
+                     weights = nlme::varPower(form = ~ tilt_angle))
+
+
+
+AIC(r_mod, mod_pvar, mod_pvar_TN, mod_pvar_TA, mod_pvar_T, mod_pvar_NA,
+    mod_pvar_N, mod_pvar_A)
+```
+
+Again, the model using temperature as a variance covariate has the lowest AIC.
+
+#### VarExp variance structure
+
+```{r}
+mod_evar <- update(r_mod, .~.,
+                   weights = nlme::varExp(form = ~ average_temperature +
+                                            average_noise + 
+                                            tilt_angle))
+
+mod_evar_TN <- update(r_mod, .~.,
+                      weights = nlme::varExp(form = ~ average_temperature +
+                                               average_noise))
+mod_evar_TA <- update(r_mod, .~.,
+                      weights = nlme::varExp(form = ~ average_temperature +
+                                               tilt_angle))
+mod_evar_T <- update(r_mod, .~.,
+                     weights = nlme::varExp(form = ~ average_temperature))
+
+mod_evar_NA <- update(r_mod, .~.,
+                      weights = nlme::varExp(form = ~ average_noise + 
+                                               tilt_angle))
+mod_evar_N <- update(r_mod, .~.,
+                     weights = nlme::varExp(form = ~ average_noise))
+
+
+mod_evar_A <- update(r_mod, .~.,
+                     weights = nlme::varExp(form = ~ tilt_angle))
+
+
+
+AIC(r_mod, mod_evar, mod_evar_TN, mod_evar_TA, mod_evar_T, mod_evar_NA,
+    mod_evar_N, mod_evar_A)
+```
+Nothing better than VarPower in there.
+
+#### VarConstPower
+```{r}
+mod_cpvar <- update(r_mod, .~.,
+                    weights = nlme::varConstPower(form = ~ average_temperature +
+                                                    average_noise + 
+                                                    tilt_angle))
+
+mod_cpvar_TN <- update(r_mod, .~.,
+                       weights = nlme::varConstPower(form = ~ average_temperature +
+                                                       average_noise))
+mod_cpvar_TA <- update(r_mod, .~.,
+                       weights = nlme::varConstPower(form = ~ average_temperature +
+                                                       tilt_angle))
+mod_cpvar_T <- update(r_mod, .~.,
+                      weights = nlme::varConstPower(form = ~ average_temperature))
+
+mod_cpvar_NA <- update(r_mod, .~.,
+                       weights = nlme::varConstPower(form = ~ average_noise + 
+                                                       tilt_angle))
+mod_cpvar_N <- update(r_mod, .~.,
+                      weights = nlme::varConstPower(form = ~ average_noise))
+
+
+mod_cpvar_A <- update(r_mod, .~.,
+                      weights = nlme::varConstPower(form = ~ tilt_angle))
+
+
+
+AIC(r_mod, mod_cpvar, mod_cpvar_TN, mod_cpvar_TA, mod_cpvar_T, mod_cpvar_NA,
+    mod_cpvar_N, mod_cpvar_A)
+```
+
+#### Round up
+The varPower and varConstPower structures are not better than each other, but are significantly better than the model that doesn't include this structure. Since varPower is simpler, I'll run with that.
+```{r}
+anova(r_mod, mod_pvar_T, mod_cpvar_T)
+```
+
+### Model selection
+As a reminder, the winning model/variance structure is below. It's currently fit using REML, need to switch to ML in order to use maximum likelihood tests during model selection.
+```{r}
+mod <- nlme::lme(d50_adj ~ average_temperature*average_noise*tilt_angle,
+                 random = ~1 | array,
+                 weights = nlme::varPower(form = ~ average_temperature),
+                 data = data,
+                 method = 'ML')
+
+summary(mod)
+```
+The interaction between noise and tilt angle is the least significant term. Drop and re-fit.
+```{r}
+mod2 <- update(mod, .~. -average_noise:tilt_angle)
+anova(mod, mod2)
+summary(mod2)
+```
+Everything is significant. Refit with REML.
+
+```{r}
+mod <- nlme::lme(d50_adj ~ average_temperature*average_noise +
+                   average_temperature*tilt_angle +
+                   average_temperature:average_noise:tilt_angle,
+                 random = ~1 | array,
+                 weights = nlme::varPower(form = ~ average_temperature),
+                 data = data)
+
+summary(mod)
+```
+
