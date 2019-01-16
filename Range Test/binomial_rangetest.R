@@ -5,32 +5,34 @@ data <- readRDS('data and imports/rangetest_logit_binary.RDS') %>%
   mutate(array = as.factor(array),
          date_f = as.factor(date))
 
-mod <- gam(cbind(success, fail) ~ distance + s(dt, bs = "ts") +
-            s(array, bs = 're') + s(date_f, bs = 're'),
-         data = data, family = 'binomial', method = 'REML')
+mod <- gamm(cbind(success, fail) ~ distance + s(dt, bs = "ts"),
+            random = list(array = ~1, date_f = ~1),
+            data = data, family = 'binomial', method = 'REML')
 summary(mod)
 anova(mod)
 
 
-# sum of linear predictor matrix without the distance term multiplied by their coefficients,
-# divided by the distance coef
-lpm <- predict(mod, data.frame(distance = 500,
-                             dt = 5,
-                             date_f = '2018-12-02',
-                             array = 'MD WEA'),
+# To calculate D50 of fitted model solve:
+# logit(p) ~ intercept + smoother coefficients * variable + distance coefficient * distance
+# log10(p / [1 - p]) ~ intercept + sm.coef * variable + dist.coef * distance
+# 0 ~ intercept + sm.coef * variable + dist.coef * D50
+# D50 ~ -(intercept + sm.coef * variable) / dist.coef
+#
+# In words: negative sum of linear predictor matrix without the distance term,
+# multiplied by their coefficients,
+# then all divided by the distance coefficient.
+#
+# You can get the sum of the coefs * variable by multiplying the predicted
+# linear prediction matrix with the corresponding coefficients.
+
+# Create the linear prediction matrix for dt = 5; other terms don't matter, but
+# remove the effect of random terms.
+lpm <- predict(mod$gam, data.frame(dt = 10,
+                               distance = 1,
+                               date_f = '2018-12-02',
+                               array = 'MD WEA'),
                type = 'lpmatrix', exclude = c('s(date_f)', 's(array)'))
-d50 <- -sum(lpm[1, -2] * coef(mod)[-2]) / coef(mod)[2]
-
-
-
-mod2 <- gamm(cbind(success, fail) ~ distance + s(dt, bs = "ts"),
-             random = list(date_f = ~1),
-             data = data, family = 'binomial', method = 'REML')
-
-lpm <- predict(mod2$gam, data.frame(distance = 1,
-                               dt = 10),
-               type = 'lpmatrix', exclude = c('s(date_f)'))
-d50 <- -(lpm[, -2] %*% coef(mod2$gam)[-2]) / coef(mod2$gam)[2]
+d50 <- -(lpm[, -2] %*% coef(mod$gam)[-2]) / coef(mod$gam)[2]
 
 
 
@@ -46,28 +48,14 @@ ci.pred <- function(n, obj, lpreds){
   # obj = fitted model
   # lpreds = linear predictor matrix of new data
 
-  param_reps <- MASS::mvrnorm(10000, coef(mod2$gam), vcov(mod2$gam))
-  estimate_reps <- rep(0, 10000)
+  param_reps <- MASS::mvrnorm(n, coef(obj), vcov(obj))
+  estimate_reps <- rep(0, n)
 
-  for (i in 1:10000){
+  for (i in 1:n){
     estimate_reps[i] <- -(lpreds[, -2] %*% param_reps[i, -2]) / param_reps[i, 2]
   }
 
-  # To calculate D50 of fitted model solve:
-  # logit(p) ~ intercept + smoother coefficients * variable + distance coefficient * distance
-  # log10(p / [1 - p]) ~ intercept + sm.coef * variable + dist.coef * distance
-  # 0 ~ intercept + sm.coef * variable + dist.coef * D50
-  # D50 ~ -(intercept + sm.coef * variable) / dist.coef
-  #
-  # In words: negative sum of linear predictor matrix without the distance term,
-  # multiplied by their coefficients,
-  # then all divided by the distance coefficient.
-  #
-  # You can get the sum of the coefs * variable by multiplying the predicted
-  # linear prediction matrix with the corresponding coefficients.
-
-  mod_d50 <- -(lpreds[, -2] %*% coef(mod2$gam)[-2]) / coef(mod2$gam)[2]
-
+  mod_d50 <- -(lpreds[, -2] %*% coef(obj)[-2]) / coef(obj)[2]
   sd_estimate <- sqrt(var(estimate_reps))
 
   out <- c(d50 = mod_d50,
@@ -76,15 +64,5 @@ ci.pred <- function(n, obj, lpreds){
   out
 }
 
-ci.pred(10000, mod2$gam, lpm)
+ci.pred(10000, mod$gam, lpm)
 
-lpm <- predict(mod2$gam, data.frame(distance = 1,
-                                    dt = -1),
-               type = 'lpmatrix', exclude = c('s(date_f)'))
-
-ci.pred(10000, mod2$gam, lpm)
-
-lpm <- predict(mod2$gam, data.frame(distance = 1,
-                                    dt = -0.5),
-               type = 'lpmatrix', exclude = c('s(date_f)'))
-ci.pred(10000, mod2$gam, lpm)
