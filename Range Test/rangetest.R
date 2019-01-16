@@ -156,7 +156,7 @@ row.names(d50) <- NULL
 
 # Plotting ----
 library(ggplot2)
-ggplot(data = det.freq, aes(x = as.Date(date), y = Freq,
+ggplot(data = det.freq, aes(x = as.Date(date), y = freq,
                      color = as.factor(distance))) +
   geom_point() +
   stat_smooth() +
@@ -164,18 +164,19 @@ ggplot(data = det.freq, aes(x = as.Date(date), y = Freq,
   facet_wrap(~ array) +
   labs(x = NULL, y = 'Frequency of detection', color = 'Distance')
 
+pl_dat <- filter(det.freq, date >= '2018-09-01')
 ggplot() +
   geom_hline(aes(yintercept = 0.5)) +
-  geom_boxplot(data = det.freq,
-               aes(x = distance, y = Freq, group = interaction(distance, array),
+  geom_boxplot(data = pl_dat,
+               aes(x = distance, y = freq, group = interaction(distance, array),
                    fill = array)) +
   scale_fill_manual(values = c('#f8766d', '#00ba38')) +
-  geom_smooth(data = det.freq, aes(x = distance, y = Freq, lty = array),
+  geom_smooth(data = pl_dat, aes(x = distance, y = freq, lty = array),
               method = 'glm', method.args = list(family = 'binomial')) +
-  geom_smooth(data = det.freq, aes(x = distance, y = Freq, lty = array), col = 'green',
+  geom_smooth(data = pl_dat, aes(x = distance, y = freq, lty = array), col = 'green',
               method = 'glm',
               method.args = list(family = binomial(link = 'probit'))) +
-  geom_smooth(data = det.freq, aes(x = distance, y = Freq, lty = array), col = 'red',
+  geom_smooth(data = pl_dat, aes(x = distance, y = freq, lty = array), col = 'red',
               method = 'nls',
               method.args = list(formula = y ~ 1 / (1 + exp(-k * (x - d50))),
                                  start = list(k = -0.01, d50 = 500)),
@@ -183,9 +184,10 @@ ggplot() +
   # facet_wrap(~ array, nrow = 2) +
   labs(x = 'Distance', y = 'Frequency of detection',
        lty = 'Array', fill = 'Array') +
-  theme_bw()
+  theme_bw() +
+  theme(legend.justification = c(0, 0), legend.position = c(0.01, 0))
 
-ggplot()+geom_line(data = d50, aes(x = date, y = d50), lwd = 1) +
+ggplot()+geom_line(data = d_probs, aes(x = date, y = D50), lwd = 1) +
   facet_wrap(~array, ncol = 1) +
   labs(x = NULL, y = 'D50', color = 'Array') +
   theme_bw()
