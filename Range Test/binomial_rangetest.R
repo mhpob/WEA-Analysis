@@ -11,36 +11,6 @@ mod <- gam(cbind(success, fail) ~ distance + s(dt, bs = "ts") +
 summary(mod)
 anova(mod)
 
-j <- predict(mod, data.frame(distance = seq(1, 1000, 10),
-                           dt = 0,
-                           array = 'MD WEA'),
-             type = 'response', exclude = c('s(date_f)', 's(array)'))
-j_se <- predict(mod, data.frame(distance = seq(1, 1000, 10),
-                              dt = 0,
-                              array = 'MD WEA'),
-             type = 'link', exclude = c('s(date_f)', 's(array)'), se = T)
-jj <- predict(mod, data.frame(distance = seq(1, 1000, 10),
-                            dt = 5,
-                            array = 'MD WEA'),
-              type = 'response')
-jjj <- predict(mod, data.frame(distance = seq(1, 1000, 10),
-                            dt = 1,
-                            array = 'MD WEA'),
-              type = 'response', )
-plot(j ~ seq(1, 1000, 10), type = 'l')
-lines(mod$family$linkinv(j_se$fit + 1.96*j_se$se.fit) ~ seq(1, 1000, 10))
-lines(mod$family$linkinv(j_se$fit - 1.96*j_se$se.fit) ~ seq(1, 1000, 10))
-lines(jj ~ seq(1, 1000, 10), col = 'blue')
-lines(jjj ~ seq(1, 1000, 10), col = 'red')
-
-
-j_se2 <- predict(mod, data.frame(distance = d50,
-                              dt = 0),
-                type = 'link', se = T)
-plot(seq(1, 1000, 10) ~ j_se$fit, type = 'l')
-lines(seq(1, 1000, 10) ~ j_se$fit + 1.96 * j_se$se.fit, lty = 'dashed')
-lines(seq(1, 1000, 10) ~ j_se$fit - 1.96 * j_se$se.fit, lty = 'dashed')
-
 
 # sum of linear predictor matrix without the distance term multiplied by their coefficients,
 # divided by the distance coef
@@ -83,7 +53,21 @@ ci.pred <- function(n, obj, lpreds){
     estimate_reps[i] <- -(lpreds[, -2] %*% param_reps[i, -2]) / param_reps[i, 2]
   }
 
+  # To calculate D50 of fitted model solve:
+  # logit(p) ~ intercept + smoother coefficients * variable + distance coefficient * distance
+  # log10(p / [1 - p]) ~ intercept + sm.coef * variable + dist.coef * distance
+  # 0 ~ intercept + sm.coef * variable + dist.coef * D50
+  # D50 ~ -(intercept + sm.coef * variable) / dist.coef
+  #
+  # In words: negative sum of linear predictor matrix without the distance term,
+  # multiplied by their coefficients,
+  # then all divided by the distance coefficient.
+  #
+  # You can get the sum of the coefs * variable by multiplying the predicted
+  # linear prediction matrix with the corresponding coefficients.
+
   mod_d50 <- -(lpreds[, -2] %*% coef(mod2$gam)[-2]) / coef(mod2$gam)[2]
+
   sd_estimate <- sqrt(var(estimate_reps))
 
   out <- c(d50 = mod_d50,
