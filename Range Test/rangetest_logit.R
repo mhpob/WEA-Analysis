@@ -159,15 +159,18 @@ d_probs <- lapply(list('D5' = 5, 'D25' = 25, 'D50' = 50, 'D75' = 75, 'D95' = 95)
 
 # Summary ----
 # Overall
-filter(det.freq, distance != 0) %>%
+filter(det.freq, date >= '2018-09-01',
+       distance != 0) %>%
   group_by(array) %>%
   summarize(mean = mean(freq),
             std = sd(freq),
             min = min(freq),
             max = max(freq))
 
-# Per distance
-filter(det.freq, distance != 0) %>%
+# Per distance, per season (change dates accordingly)
+filter(det.freq,
+       date >= '2018-09-01',
+       distance != 0) %>%
   group_by(array, distance) %>%
   summarize(mean = mean(freq),
             std = sd(freq),
