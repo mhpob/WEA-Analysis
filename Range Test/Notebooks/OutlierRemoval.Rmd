@@ -10,6 +10,7 @@ knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 ```{r}
 data <- readRDS('data and imports/rangetest_logit_data.rds')
 names(data) <- tolower(gsub(' ', '_', names(data)))
+data$array <- as.factor(data$array)
 ```
 
 ## The need to remove outliers
@@ -67,7 +68,7 @@ It seems that the excessively large/negative outliers (one is 14km, the other -7
 library(dplyr)
 data_adj <- data %>%
   group_by(array) %>%
-  mutate_at(vars(grep('d\\d\\d', names(.))),
+  mutate_at(vars(grep('d\\d\\d*', names(.))),
             funs(ifelse((. > (4 * lead(.)) & . > (4 * lag(.))) |
                           . <= 0,
                         ((lag(.) + lead(.)) / 2), .)))
@@ -95,7 +96,7 @@ Lumping everything together:
 ```{r}
 data_adj <- data %>%
   group_by(array) %>%
-  mutate_at(vars(grep('d\\d\\d', names(.))),
+  mutate_at(vars(grep('d\\d\\d*', names(.))),
             funs(adj = ifelse((. > (4 * lead(.)) & . > (4 * lag(.))) |
                                    . <= 0,
                                  ((lag(.) + lead(.)) / 2), .))) %>% 

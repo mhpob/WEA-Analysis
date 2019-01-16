@@ -1,0 +1,266 @@
+---
+title: "D50 OOS GAMM"
+author: "Mike O'Brien"
+date: "Jan 3, 2018"
+output:
+  html_notebook: default
+  word_document: default
+---
+```{r setup, echo = FALSE}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+The previous GAMM model used predictors that were recorded in situ by each receiver. In this iteration, we're going to look for predictors that can be accessed through freely-available ocean observing system (OOS) outlets. Think of it this way: using receiver-recorded variables is necessarily a retrospective affair. By using OOS predictors, we can get an idea of what our detection range may be at other areas of the Middle Atlantic Bight while sitting in the comfort of our own home.
+
+## Variable selection
+
+First step will be to compare variables. I've already pulled [satellite SST](https://coastwatch.pfeg.noaa.gov/erddap/info/jplMURSST41/index.html), as well as wind and wave data from [buoy 44009](https://www.ndbc.noaa.gov/station_page.php?station=44009) of the National Data Buoy Center. First we'll look at some pairs plots to see how the variables are related within the WEA array.
+
+```{r}
+data <- readRDS('data and imports/rangetest_no_outliers.RDS')
+
+# Pull out OOS data
+wea <- data[data$array == 'MD WEA',
+            names(data) %in% c('sst', 'wdir', 'wspd', 'gst', 'wvht', 'dpd',
+                               'apd', 'mwd', 'pres', 'atmp', 'wtmp')]
+summary(wea)
+```
+
+There are a fair amount of missing values (NA) that we'll have to remove.
+
+```{r}
+wea <- wea[complete.cases(wea),]
+
+summary(wea)
+```
+
+Better. Now run the pairs plot.
+
+```{r, fig.width=6.5}
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...){
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r <- abs(cor(x, y))
+    txt <- format(c(r, 0.123456789), digits = digits)[1]
+    txt <- paste0(prefix, txt)
+    if(missing(cex.cor)) cex.cor <- 0.8 / strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+
+pairs(wea, lower.panel = panel.smooth, upper.panel = panel.cor, gap = 0,
+      row1attop = F)
+```
+
+Correlations are in the top panels in the figure above. As would be expected, sea surface temperature as recorded by satellite and the NDBC buoy are pretty much identical. Only one of these will be needed. Buoy-recorded air and water temperatures are also basically the same, as well. Wind speed and gust velocity are also nearly identical--this makes sense, as gust velocity is a derived produt of wind speed. Wind speed and wave height have a correlation of 0.75, which is likely high enough to only need one. Dominant and average wave periods are highly correlated (0.70).
+
+Let's see if a PCA suggests the same selection.
+
+```{r, fig.width=6.5}
+pca <- vegan::rda(wea, scale = T)
+biplot(pca, type = c('text', 'points'))
+```
+
+Similar story here: the measures of temperature (atmp, wtmp, sst) are collinear, as are wind speed and gust speed (wspd, gst), wave periods (apd, dpd), and wind and wave directions (mwd, wdir). 
+
+Of the measures of temperature, I'm picking the satellite-derived **SST** measure. There are no missing values of SST, while there are 52 missing buoy-based measures of water temperature and 210 missing buoy-based measures of air temperature.
+
+Of the measures of wind, I'm picking **wind speed** over gust speed, as the aggregate measure of wind is more likely to affect detection distance than an acute metric.
+
+I'm selecting **average wave period** over the dominant wave period, as it is a more-agglomerative metric.
+
+Lastly, I'm selecting **wave direction** over wind direction simply because the wind direction/speed recording seems to have broken in October 2018. After this is over, I'm going to select wind information from OCMD. There should be more freely-available wind data than wave data.
+
+## Modeling
+All of the variables left have been recorded at a single point [(buoy 44009)](https://www.ndbc.noaa.gov/station_page.php?station=44009) except for SST, which was recorded separately over each array and may be a result of different processes. Because of this, the starting model will allow SST to vary accoring to array (i.e., a random effect of array on SST [random slope]).
+
+
+```{r}
+mod_data <- data[, names(data) %in% c('date', 'array', 'd50_adj', 'sst', 'wspd', 'wvht',
+                                      'apd', 'mwd', 'pres')]
+mod_data <- mod_data[complete.cases(mod_data[, !names(mod_data) %in% 'date']),]
+
+library(mgcv)
+mod <- gam(d50_adj ~ s(sst, array, bs = 're') + s(sst, bs = 'ts') +
+             s(wspd, bs = 'ts') +
+             s(wvht, bs = 'ts') +
+             s(apd, bs = 'ts') +
+             s(mwd, bs = 'ts') +
+             s(pres, bs = 'ts'),
+           data = mod_data,
+           family = Gamma(),
+           method = 'REML',
+           verbosePQL = F)
+
+summary(mod)
+```
+
+Remove pressure.
+
+```{r}
+mod2 <- gam(d50_adj ~ s(sst, array, bs = 're') + s(sst, bs = 'ts') +
+              s(wspd, bs = 'ts') +
+              s(wvht, bs = 'ts') +
+              s(apd, bs = 'ts') +
+              s(mwd, bs = 'ts'),
+            data = mod_data,
+            family = Gamma(),
+            method = 'REML',
+            verbosePQL = F)
+
+summary(mod2)
+```
+
+Everything looks significant. Let's look at the residuals.
+
+```{r, fig.width=6.5}
+par(mfrow = c(2, 2))
+gam.check(mod2)
+```
+
+Good to me!
+
+## Marginal effects
+I want to get the marginal effects of the model terms from the linear predictor scale to the response scale. Following [slide 16 of Simon Wood's GAM presentation](https://people.maths.bris.ac.uk/~sw15190/mgcv/check-select.pdf), it seems that I need to create the confidence intervals in the linear predictor scale, *then* transform them to the predictor scale. I do this in three steps:
+
+1) Use R's `predict` function with `type = 'response'` and `se = F` (the default) to get the predictions on the response scale.
+2) Use `predict` with `type = 'link'` and `se = T` to get the predictions and errors on the linear predictor scale.
+3) Transform the calculated linear-predictor-scale CIs to the response scale using the inverse of the link function.
+
+First step:
+
+```{r}
+# Create dummy data, holding everything except SST at its mean
+sst <- data.frame(sst = seq(min(mod_data$sst),
+                            max(mod_data$sst),
+                            length = 100),
+                  wspd = mean(mod_data$wspd),
+                  wvht = mean(mod_data$wvht),
+                  apd = mean(mod_data$apd),
+                  mwd = mean(mod_data$mwd),
+                  array = 'Inner')
+
+# This is the actual "first step"
+sst_pred <- predict(mod2, sst, type = 'response',
+                    # next line removes random effects (anything with 'array')
+                    exclude = grep('array', row.names(summary(mod2)$s.table),
+                                   value = T))
+```
+
+Second step:
+
+```{r}
+sst_pred_se <- predict(mod2, sst, type = 'link', se = T,
+                    exclude = grep('array', row.names(summary(mod2)$s.table),
+                                   value = T))
+```
+
+The inverse of the *inverse link* (what we used here) is just `1/x`. Third step:
+
+```{r}
+sst_pred <- data.frame(resp = sst_pred,
+                       sst = sst$sst,
+                       # The next two lines are where the magic happens
+                       UCI = 1/(sst_pred_se$fit - 2 * sst_pred_se$se.fit),
+                       LCI = 1/(sst_pred_se$fit + 2 * sst_pred_se$se.fit))
+```
+
+Now plot:
+
+```{r, fig.width=6.5}
+plot(resp ~ sst, data = sst_pred, type = 'n', ylim = c(min(LCI), max(UCI)))
+lines(resp ~ sst, data = sst_pred)
+lines(LCI ~ sst, data = sst_pred, lty = 2)
+lines(UCI ~ sst, data = sst_pred, lty = 2)
+rug(mod_data$sst)
+```
+
+We can see that the CIs are skewed to greater values as would be expected with a gamma distribution. I'm going to run this for the other terms. The code is long, so I'm not going to include it here.
+
+```{r, echo = F, fig.width=6.5}
+marginal_plot <- function(variable){
+  newdata_ifelse <- function(x){
+    if(variable == x){
+      seq(min(mod_data[[variable]]), max(mod_data[[variable]]), length = 100)
+    } else{
+      mean(mod_data[[x]])
+    }
+  }
+  
+  newdata <- data.frame(sst = newdata_ifelse('sst'),
+                        wspd = newdata_ifelse('wspd'),
+                        wvht = newdata_ifelse('wvht'),
+                        apd = newdata_ifelse('apd'),
+                        mwd = newdata_ifelse('mwd'),
+                        array = 'Inner')
+  
+  pred <- predict(mod2, newdata, type = 'response',
+                  exclude = grep('array', row.names(summary(mod2)$s.table),
+                                 value = T))
+  pred_se <- predict(mod2, newdata, type = 'link', se = T,
+                     exclude = grep('array', row.names(summary(mod2)$s.table),
+                                    value = T))
+  
+  values <- data.frame(resp = pred,
+                       new_vals = newdata[[variable]],
+                       UCI = 1/(pred_se$fit - 2 * pred_se$se.fit),
+                       LCI = 1/(pred_se$fit + 2 * pred_se$se.fit))
+
+  plot(resp ~ new_vals, data = values, type = 'n',
+       ylim = c(min(LCI), max(UCI)),
+       xlab = variable, ylab = 'D50')
+  lines(resp ~ new_vals, data = values)
+  lines(LCI ~ new_vals, data = values, lty = 2)
+  lines(UCI ~ new_vals, data = values, lty = 2)
+  rug(mod_data[[variable]])
+}
+
+par(mfrow = c(2, 3))
+for(i in c('sst', 'wspd', 'wvht', 'apd', 'mwd')) marginal_plot(i)
+```
+
+## Predictions
+To get the predictions for the whole time series, we use the back-transforming process outlined above.
+
+```{r, fig.width=6.5}
+p_mod <- predict(mod2, type = 'response',
+                 # next line removes random effects (anything with 'array')
+                 exclude = grep('array', row.names(summary(mod2)$s.table),
+                                value = T))
+
+p_mod_se <- predict(mod2, type = 'link', se = T,
+                    exclude = grep('array', row.names(summary(mod2)$s.table),
+                                   value = T))
+
+library(dplyr)
+p_mod <- cbind(data.frame(mod_data), data.frame(response_fit = p_mod), p_mod_se)
+p_mod <- p_mod %>% 
+  # This calculates the lower and upper CIs and transforms them to the response scale
+  mutate(LCI = 1/(fit + 2 * se.fit),
+         UCI = 1/(fit - 2 * se.fit))
+
+p <- p_mod %>%
+  select(date, array, Observed = d50_adj, Estimated = response_fit, LCI, UCI) %>%
+  # use the time period where all predictors are available
+  filter(date <= '2018-09-30') %>% 
+  tidyr::gather(key = 'key', value = 'val', -date, -array, -LCI, -UCI)
+
+library(ggplot2)
+ggplot() +
+  geom_ribbon(data = p[p$key == 'Estimated',],
+              aes(x = date, ymin = LCI, ymax =  UCI),
+              fill = 'gray', alpha = 0.5) +
+  geom_line(data = p[p$key %in% c('Observed', 'Estimated'),],
+            aes(x = date, y = val, linetype = key)) +
+  labs(x=NULL, y = 'Estimated D50', linetype = NULL) +
+  facet_wrap(~array, nrow = 2) +
+  theme_bw()
+```
+
+## Summary
+D50 increases with increasing SST, but its affect also becomes more uncertain and levels off above 20°C. D50 decreases linearly with increasing wind speed and levels off at winds above 10 m/s. The effect of wave height is similar, though much stronger: D50 diminishes rapidly and levels off above 2.5m. Average wave periods from 3-6 seconds don't affect D50 too much, but once the waves get bigger (>6s), D50 quickly decreases. D50 is greatest when waves come from the ENE (50° from north), reaching a low in the ESE (120° from north). Southerly waves are also associated with higher D50, while waves from the southwest were associated with low D50.
+
+The model explains 76.9% of the deviance, which is pretty good. Similar to the in-situ variable model, observed values fall within the CIs when not in the summer period. I think that once we include $\Delta T$, we'll have a really good model for this area.
+
+The predictions follow the MD WEA time series pretty well and don't differ too much between arrays; this should be expected, as most of the OOS data I've pulled is from a buoy near the MD WEA site and the same data was used to explain each series. A better model would pull OCMD data to explain variation in the Inner array, and buoy data to explain MD WEA data. This was the original intent, but will take a little bit of coding gymnastics to get through. This is my next step.
+
+

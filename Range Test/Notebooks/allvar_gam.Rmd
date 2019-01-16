@@ -1,0 +1,358 @@
+---
+title: "D50 GAM with all variables"
+author: "Mike O'Brien"
+date: "Jan 4, 2019"
+output: html_notebook
+---
+```{r setup, echo = FALSE}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+The first two GAMM iterations used 1) predictors that were recorded in situ by each receiver and 2) predictios that can be accessed through freely-available ocean observing system (OOS) outlets. Now, we're going to move onto throwing everything into the kitchen sink. The only new variable here will be `dt`, which is simply SST - BWT.
+
+## Variable selection
+Pull out the predictor variables, keeping only the dates that have observations for them all.
+
+```{r}
+data <- readRDS('data and imports/rangetest_no_outliers.RDS')
+
+wea <- data[data$array == 'MD WEA',
+            names(data) %in% c('average_temperature', 'average_noise', 'tilt_angle',
+                               'dt', 'sst', 'wdir', 'wspd', 'gst', 'wvht', 'dpd',
+                               'apd', 'mwd', 'pres', 'atmp', 'wtmp')]
+wea <- wea[complete.cases(wea),]
+summary(wea)
+```
+
+Now for the pairs plot.
+
+```{r}
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...){
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r <- abs(cor(x, y))
+    txt <- format(c(r, 0.123456789), digits = digits)[1]
+    txt <- paste0(prefix, txt)
+    if(missing(cex.cor)) cex.cor <- 0.8 / strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+
+pairs(wea, lower.panel = panel.smooth, upper.panel = panel.cor, gap = 0,
+      row1attop = F)
+```
+
+After tacking on $\Delta T$ ("dt") and the in-situ variables, we can see that BWT ("average_temperature") is correlated with, SST (0.85), $\Delta T$ (0.70), and the buoy-recorded temperature measures ("wtemp": 0.84; "atmp": 0.77). In addition, noise ("average_noise") is correlated with wave height ("Wvht") and average wave period ("apd").
+
+Now to run our favorite PCA.
+
+```{r}
+pca <- vegan::rda(wea, scale = T)
+biplot(pca, type = c('text', 'points'))
+```
+
+As we saw before, the temperature metrics are all collinear. Since I have a hunch that **$\Delta T$** will explain much more of what's going on, I'm dropping the other temperature measures. 
+
+I'll also drop wind gust speed in favor of **wind speed**, as the aggregate measure of wind is more likely to affect detection distance than an acute metric.
+
+```{r}
+wea_dropvar <- wea[, !names(wea) %in% c('average_temperature', 'atmp', 'sst',
+                                        'wtmp', 'gst')]
+pca2 <- vegan::rda(wea_dropvar, scale = T)
+biplot(pca2, type = c('text', 'points'))
+```
+
+At this point, I feel like there's a pretty good spread. I will probably have to come back and think about selecting one of *mwd*/*wdir* and *dpd*/*apd*/*tilt_angle*.
+
+## Modeling
+$\Delta T$, tilt angle, and noise were recorded individually at each array, so I'll allow them to vary randomly with array.
+
+```{r}
+mod_data <- data[, names(data) %in% c('date', 'array', 'd50_adj', 'average_noise',
+                                      'tilt_angle', 'dt', 'wdir', 'wspd', 'wvht',
+                                      'dpd', 'apd', 'mwd', 'pres')]
+mod_data <- mod_data[complete.cases(mod_data[, !names(mod_data) %in% 'date']),]
+
+library(mgcv)
+mod <- gam(d50_adj ~ s(dt, array, bs = 're') + s(dt, bs = 'ts') +
+             s(average_noise, array, bs = 're') + s(average_noise, bs = 'ts') +
+             s(tilt_angle, array, bs = 're') + s(tilt_angle, bs = 'ts') +
+             s(wdir, bs = 'ts')+
+             s(wspd, bs = 'ts') +
+             s(wvht, bs = 'ts') +
+             s(dpd, bs = 'ts') +
+             s(apd, bs = 'ts') +
+             s(mwd, bs = 'ts') +
+             s(pres, bs = 'ts'),
+           data = mod_data,
+           family = Gamma(),
+           method = 'REML',
+           verbosePQL = F)
+
+summary(mod)
+```
+
+Removing the random slope of $\Delta T$ by array.
+
+```{r}
+mod2 <- gam(d50_adj ~ s(dt, bs = 'ts') +
+             s(average_noise, array, bs = 're') + s(average_noise, bs = 'ts') +
+             s(tilt_angle, array, bs = 're') + s(tilt_angle, bs = 'ts') +
+             s(wdir, bs = 'ts')+
+             s(wspd, bs = 'ts') +
+             s(wvht, bs = 'ts') +
+             s(dpd, bs = 'ts') +
+             s(apd, bs = 'ts') +
+             s(mwd, bs = 'ts') +
+             s(pres, bs = 'ts'),
+           data = mod_data,
+           family = Gamma(),
+           method = 'REML',
+           verbosePQL = F)
+
+summary(mod2)
+```
+
+And now random slope of tilt angle by array.
+
+```{r}
+mod3 <- gam(d50_adj ~ s(dt, bs = 'ts') +
+             s(average_noise, array, bs = 're') + s(average_noise, bs = 'ts') +
+             s(tilt_angle, bs = 'ts') +
+             s(wdir, bs = 'ts')+
+             s(wspd, bs = 'ts') +
+             s(wvht, bs = 'ts') +
+             s(dpd, bs = 'ts') +
+             s(apd, bs = 'ts') +
+             s(mwd, bs = 'ts') +
+             s(pres, bs = 'ts'),
+           data = mod_data,
+           family = Gamma(),
+           method = 'REML',
+           verbosePQL = F)
+
+summary(mod3)
+```
+
+Random effects seem sorted. Drop wind and wave directions.
+
+```{r}
+mod4 <- gam(d50_adj ~ s(dt, bs = 'ts') +
+             s(average_noise, array, bs = 're') + s(average_noise, bs = 'ts') +
+             s(tilt_angle, bs = 'ts') +
+             s(wspd, bs = 'ts') +
+             s(wvht, bs = 'ts') +
+             s(dpd, bs = 'ts') +
+             s(apd, bs = 'ts') +
+             s(pres, bs = 'ts'),
+           data = mod_data,
+           family = Gamma(),
+           method = 'REML',
+           verbosePQL = F)
+
+summary(mod4)
+```
+
+Remove average wave period.
+
+```{r}
+mod5 <- gam(d50_adj ~ s(dt, bs = 'ts') +
+             s(average_noise, array, bs = 're') + s(average_noise, bs = 'ts') +
+             s(tilt_angle, bs = 'ts') +
+             s(wspd, bs = 'ts') +
+             s(wvht, bs = 'ts') +
+             s(dpd, bs = 'ts') +
+             s(pres, bs = 'ts'),
+           data = mod_data,
+           family = Gamma(),
+           method = 'REML',
+           verbosePQL = F)
+
+summary(mod5)
+```
+
+Drop pressure.
+
+```{r}
+mod6 <- gam(d50_adj ~ s(dt, bs = 'ts') +
+             s(average_noise, array, bs = 're') + s(average_noise, bs = 'ts') +
+             s(tilt_angle, bs = 'ts') +
+             s(wspd, bs = 'ts') +
+             s(wvht, bs = 'ts') +
+             s(dpd, bs = 'ts'),
+           data = mod_data,
+           family = Gamma(),
+           method = 'REML',
+           verbosePQL = F)
+
+summary(mod6)
+```
+
+Everything is significant now, but the dominant wave period seems like it may have a linear response. Check the plots.
+
+```{r}
+plot(mod6, pages = 2, scale = 0)
+```
+
+Both dominant wave period and wind speed look linear! Change around the model.
+
+```{r}
+mod7 <- gam(d50_adj ~ s(dt, bs = 'ts') +
+             s(average_noise, array, bs = 're') + s(average_noise, bs = 'ts') +
+             s(tilt_angle, bs = 'ts') +
+             wspd +
+             s(wvht, bs = 'ts') +
+             dpd,
+           data = mod_data,
+           family = Gamma(),
+           method = 'REML',
+           verbosePQL = F)
+
+summary(mod7)
+```
+
+```{r}
+plot(mod7, pages = 1, scale = 0)
+```
+
+
+```{r}
+marginal_plot <- function(variable){
+  newdata_ifelse <- function(x){
+    if(variable == x){
+      seq(min(mod_data[[variable]]), max(mod_data[[variable]]), length = 100)
+    } else{
+      mean(mod_data[[x]])
+    }
+  }
+  
+  newdata <- data.frame(dt = newdata_ifelse('dt'),
+                        average_noise = newdata_ifelse('average_noise'),
+                        tilt_angle = newdata_ifelse('tilt_angle'),
+                        wvht = newdata_ifelse('wvht'),
+                        wspd = newdata_ifelse('wspd'),
+                        dpd = newdata_ifelse('dpd'),
+                        array = 'MD WEA')
+  
+  pred <- predict(mod7, newdata, type = 'response',
+                  exclude = grep('array', row.names(summary(mod7)$s.table),
+                                 value = T))
+  pred_se <- predict(mod7, newdata, type = 'link', se = T,
+                     exclude = grep('array', row.names(summary(mod7)$s.table),
+                                    value = T))
+  
+  values <- data.frame(resp = pred,
+                       new_vals = newdata[[variable]],
+                       UCI = 1/(pred_se$fit - 2 * pred_se$se.fit),
+                       LCI = 1/(pred_se$fit + 2 * pred_se$se.fit))
+
+  plot(resp ~ new_vals, data = values, type = 'n',
+       ylim = c(min(LCI), max(UCI)),
+       xlab = variable, ylab = 'D50')
+  lines(resp ~ new_vals, data = values)
+  lines(LCI ~ new_vals, data = values, lty = 2)
+  lines(UCI ~ new_vals, data = values, lty = 2)
+  rug(mod_data[[variable]])
+}
+
+par(mfrow = c(2, 3))
+for(i in c('wspd', 'dpd', 'dt', 'average_noise', 'tilt_angle', 'wvht')) marginal_plot(i)
+```
+
+
+```{r}
+p_mod <- predict(mod7, type = 'response',
+                 # next line removes random effects (anything with 'array')
+                 exclude = grep('array', row.names(summary(mod7)$s.table),
+                                value = T))
+
+p_mod_se <- predict(mod7, type = 'link', se = T,
+                    exclude = grep('array', row.names(summary(mod7)$s.table),
+                                   value = T))
+
+library(dplyr)
+p_mod <- cbind(data.frame(mod_data), data.frame(response_fit = p_mod), p_mod_se)
+p_mod <- p_mod %>% 
+  # This calculates the lower and upper CIs and transforms them to the response scale
+  mutate(LCI = 1/(fit + 2 * se.fit),
+         UCI = 1/(fit - 2 * se.fit))
+
+p <- p_mod %>%
+  select(date, array, Observed = d50_adj, Estimated = response_fit, LCI, UCI) %>%
+  # use the time period where all predictors are available
+  filter(date <= '2018-08-19') %>%
+  tidyr::gather(key = 'key', value = 'val', -date, -array, -LCI, -UCI)
+
+library(ggplot2)
+ggplot() +
+  geom_ribbon(data = p[p$key == 'Estimated',],
+              aes(x = date, ymin = LCI, ymax =  UCI),
+              fill = 'gray', alpha = 0.5) +
+  geom_line(data = p[p$key %in% c('Observed', 'Estimated'),],
+            aes(x = date, y = val, linetype = key)) +
+  labs(x=NULL, y = 'Estimated D50', linetype = NULL) +
+  facet_wrap(~array, nrow = 2) +
+  theme_bw()
+```
+
+
+
+
+
+
+## Interaction between sst and bwt?
+
+```{r}
+mod_data2 <- data[, names(data) %in% c('date', 'array', 'd50_adj', 'average_noise',
+                                      'tilt_angle', 'dt', 'wdir', 'wspd', 'wvht',
+                                      'dpd', 'apd', 'mwd', 'pres', 'sst', 'average_temperature')]
+mod_data2 <- mod_data2[complete.cases(mod_data2[, !names(mod_data2) %in% 'date']),]
+
+
+mod8 <- gam(d50_adj ~ wpd+
+              s(sst, average_temperature, bs = 'ts') +
+             s(average_noise, array, bs = 're') + s(average_noise, bs = 'ts') +
+             s(wvht, bs = 'ts'),
+           data = mod_data2,
+           family = Gamma(),
+           method = 'REML',
+           verbosePQL = F)
+
+summary(mod8)
+```
+
+```{r}
+p_mod <- predict(mod8, type = 'response',
+                 # next line removes random effects (anything with 'array')
+                 exclude = grep('array', row.names(summary(mod8)$s.table),
+                                value = T))
+
+p_mod_se <- predict(mod8, type = 'link', se = T,
+                    exclude = grep('array', row.names(summary(mod8)$s.table),
+                                   value = T))
+
+library(dplyr)
+p_mod <- cbind(data.frame(mod_data), data.frame(response_fit = p_mod), p_mod_se)
+p_mod <- p_mod %>% 
+  # This calculates the lower and upper CIs and transforms them to the response scale
+  mutate(LCI = 1/(fit + 2 * se.fit),
+         UCI = 1/(fit - 2 * se.fit))
+
+p <- p_mod %>%
+  select(date, array, Observed = d50_adj, Estimated = response_fit, LCI, UCI) %>%
+  # use the time period where all predictors are available
+  filter(date <= '2018-08-19') %>%
+  tidyr::gather(key = 'key', value = 'val', -date, -array, -LCI, -UCI)
+
+library(ggplot2)
+ggplot() +
+  geom_ribbon(data = p[p$key == 'Estimated',],
+              aes(x = date, ymin = LCI, ymax =  UCI),
+              fill = 'gray', alpha = 0.5) +
+  geom_line(data = p[p$key %in% c('Observed', 'Estimated'),],
+            aes(x = date, y = val, linetype = key)) +
+  labs(x=NULL, y = 'Estimated D50', linetype = NULL) +
+  facet_wrap(~array, nrow = 2) +
+  theme_bw()
+```
+
+

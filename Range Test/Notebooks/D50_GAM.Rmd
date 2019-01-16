@@ -1,80 +1,99 @@
 ---
 title: "Gammin'"
-output: html_notebook
+output:
+  html_notebook: default
+  pdf_document: default
+  word_document: default
 ---
 ```{r setup, echo = FALSE}
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 ```
 
-Let's GAM it up
-```{r}
+Let's GAM it up!
+```{r echo=F, warning=FALSE}
 library(mgcv)
 data <- readRDS('data and imports/rangetest_no_outliers.RDS')
+data$array <- as.factor(data$array)
 ```
 
-Compare model with and without random array term.
-```{r}
-f_mod <- gamm(d50_adj ~ s(average_temperature, bs = 'cr') +
-            s(average_noise, bs = 'cr') +
-            s(tilt_angle, bs = 'cr'),
-            method = 'REML',
-         data = data)
-
-
-r_mod <- gamm(d50_adj ~ s(average_temperature, bs = 'cr') +
-            s(average_noise, bs = 'cr') +
-            s(tilt_angle, bs = 'cr'),
-         random = list(array = ~ 1),
-            method = 'REML',
-         data = data)
-
-
-anova(f_mod$lme, r_mod$lme)
-
+## Build model
+Look first at the response variable to choose an error structure:
+```{r, echo = F}
+plot.ts(cbind('MD WEA' = data[data$array == 'MD WEA', 'd50_adj'],
+              'Inner' = data[data$array == 'Inner', 'd50_adj']),
+        main = 'D50 through time')
 ```
 
-**need to update this. random might be needed after tilt adjustment**
+I'm choosing the [Gamma distribution](https://en.wikipedia.org/wiki/Gamma_distribution) as the error distribution because:
 
-This is barely significant when using REML, and not significant if using other methods. There's probably no advantage to including random array term. Refit using `gam`.
+* Response variable (D50) cannot be negative (could be if Gaussian)
+* The variance of the response variable seems to increase with increasing local mean (should be consistant if Gaussian)
+
+Going to use the version of thin-plate splines (`mgcv::gam` default) that allows for the term to shrink to zero if not as influential. `pages = 1` puts the smooths on one plot, and `scale = 0` allows each plot to have its own y limits.
 ```{r}
-mod <- gam(d50_adj ~ s(average_temperature, bs = 'cr') +
-            s(average_noise, bs = 'cr') +
-            s(tilt_angle, bs = 'cr'),
+mod <- gam(d50_adj ~ s(average_temperature, bs = 'ts') +
+             s(average_noise, bs = 'ts') +
+             s(tilt_angle, bs = 'ts'),
+           family = Gamma(),
            method = 'REML',
-         data = data, select = T)
+           data = data)
 summary(mod)
-plot(mod, pages = 1, shade = T)
+plot(mod, scale = 0, pages = 1)
 ```
+
+All terms are significant, but it kinda looks like noise or tilt could be straight lines. Checking this out.
 ```{r}
 gam.check(mod)
 ```
 
-
-Keep chugging. Try different error structure? I'm choosing the [Gamma distribution](https://en.wikipedia.org/wiki/Gamma_distribution) because:
-*  Response variable (D50) cannot be negative
-*  The variance of the response variable seems to increase with increasing mean.
+`gam.check` suggests that temperature and noise are fine, but something may be up with tilt angle. Triple the k (allowed wigglyness) and refit.
 ```{r}
-mod_gamma <- gam(d50_adj ~ s(average_temperature, bs = 'cs') +
-            s(average_noise, bs = 'cs') +
-            s(tilt_angle, bs = 'cs'),
-            family = Gamma(),
-            method = 'REML',
-         data = data, select = T)
-summary(mod_gamma)
-plot(mod_gamma)
+mod_morek <- gam(d50_adj ~ s(average_temperature, bs = 'ts') +
+                   s(average_noise, bs = 'ts') +
+                   s(tilt_angle, bs = 'ts', k = 27),
+                 family = Gamma(),
+                 method = 'REML',
+                 data = data)
+summary(mod_morek)
+plot(mod_morek, scale = 0, pages = 1)
 ```
+Doesn't change the edf by much, so I doubt it has made too much of a change.
 
 ```{r}
-AIC(mod_gamma)
-gam.check(mod_gamma)
+gam.check(mod_morek)
 ```
 
+Nope. Going to abandon this for now.
 
+## Random Effects
+### Random effect as a spline
+Compare model with and without random effect of "Array". Going to model this as a random effect spline.
 ```{r}
-vis.gam(mod_gamma, type = 'response', theta = 130)
+f_mod <- gam(d50_adj ~ s(average_temperature, bs = 'ts') +
+                s(average_noise, bs = 'ts') +
+                s(tilt_angle, bs = 'ts'),
+              family = Gamma(),
+              method = 'REML',
+              data = data)
+
+r_mod <- gam(d50_adj ~ s(average_temperature, bs = 'ts') +
+                s(average_noise, bs = 'ts') +
+                s(tilt_angle, bs = 'ts') +
+                s(array, bs = 're'),
+              family = Gamma(),
+              method = 'REML',
+              data = data)
+
+anova(f_mod, r_mod, test = 'Chisq')
 ```
 
-Okay, I really want to see if I can plot the smooths on the response scale. I'm following the instructions on [this Cross Validated answer](https://stats.stackexchange.com/questions/166553/creating-marginal-plots-when-using-mgcv-gam-package-in-r). First up, I'm checking temperature. Keeping noise at its median and tilt at its mean.
+This seems significant enough.
+```{r}
+mod <- r_mod
+plot(mod, pages = 1, scale = 0)
+```
+
+Okay, I really want to see if I can plot the smooths on the response scale. I'm following the instructions on [this Cross Validated answer](https://stats.stackexchange.com/questions/166553/creating-marginal-plots-when-using-mgcv-gam-package-in-r). First up, I'm checking temperature. Keeping noise at its median and tilt at its mean. This also needs array location input.
 
 ```{r}
 margplot <- function(predicted, variable, ...){
@@ -86,25 +105,118 @@ margplot <- function(predicted, variable, ...){
   lines(variable, predicted$fit - 2 * predicted$se.fit, lty = 2)
 }
 
+bwt_fit_wea <- data.frame(average_temperature = seq(min(data$average_temperature),
+                                                    max(data$average_temperature),
+                                                    length = 100),
+                          average_noise = median(data$average_noise),
+                          tilt_angle = mean(data$tilt_angle),
+                          array = 'MD WEA')
+bwt_pred_wea <- predict(mod, bwt_fit_wea, type = 'response', se.fit = T)
+
+margplot(bwt_pred_wea, bwt_fit_wea$average_temperature,
+         main = 'MD WEA',
+         xlab = 'BWT', ylab = 'Marginal effect on D50')
+
+bwt_fit_inner <- data.frame(average_temperature = seq(min(data$average_temperature),
+                                                    max(data$average_temperature),
+                                                    length = 100),
+                          average_noise = median(data$average_noise),
+                          tilt_angle = mean(data$tilt_angle),
+                          array = 'Inner')
+bwt_pred_inner <- predict(mod, bwt_fit_inner, type = 'response', se.fit = T)
+
+margplot(bwt_pred_inner, bwt_fit_wea$average_temperature,
+         main = 'Inner',
+         xlab = 'BWT', ylab = 'Marginal effect on D50')
+```
+
+The whole reason I want array as a random effect is get away from this--to take out the between-array variation. Going to move onto modeling the random effect as a specific term in an attempt to expand inference.
+
+### Random effect as a specified term
+This uses the function `mgcv::gamm` instead of `mgcv::gam`, and the output becomes really weird. As far as I can tell, there is a regular glm run using `nlme::lme` or `MASS::gammPQL`, and then a gam as well. This is probably wrong, thogh. Here's what the help documentation says:
+
+>Smooths are specified as in a call to gam as part of the fixed effects model formula, but the wiggly components of the smooth are treated as random effects.
+>It is assumed that the random effects and correlation structures are employed primarily to model residual correlation in the data and that the prime interest is in inference about the terms in the fixed effects model formula including the smooths.
+
+Well, my prime interest is inference, so here we go:
+
+```{r}
+mod_rterm <- gamm(d50_adj ~ s(average_temperature, bs = 'ts') +
+                    s(average_noise, bs = 'ts') +
+                    s(tilt_angle, bs = 'ts'),
+                  random = list(array = ~1),
+                  family = Gamma(),
+                  method = 'REML',
+                  data = data, verbosePQL = F)
+
+summary(mod_rterm$gam)
+```
+
+Tilt angle has a near-one EDF, which suggests that it can be considered a linear predictor.
+```{r}
+plot(mod_rterm$gam, select = 3)
+```
+Looks like it in the visual, too. Refit with tilt as a linear predictor.
+
+```{r}
+mod_rterm_lintilt <- gamm(d50_adj ~ s(average_temperature, bs = 'ts') +
+                            s(average_noise, bs = 'ts') +
+                            tilt_angle,
+                          random = list(array = ~1),
+                          family = Gamma(),
+                          method = 'REML',
+                          data = data, verbosePQL = F)
+
+summary(mod_rterm_lintilt$gam)
+```
+
+```{r}
+gam.check(mod_rterm_lintilt$gam)
+```
+
+## End game
+So the model is now:
+
+* Gamma distributed errors
+* Fixed effects of
+** Smoothed bottom water temperature (thin plate splines)
+** Smoothed noise (thin plate splines)
+** Linear tilt angle
+* Random effect of **Array**
+
+What does this look like?
+```{r}
+mod <- gamm(d50_adj ~ s(average_temperature, bs = 'ts') +
+              s(average_noise, bs = 'ts') +
+              tilt_angle,
+            random = list(array = ~1),
+            family = Gamma(),
+            method = 'REML',
+            data = data, verbosePQL = F)
+```
+
+### Marginal effects
+Back to this. Using the `margplot` function I made above. Noise will be held at its median value, tilt at its mean.
+```{r}
 bwt_fit <- data.frame(average_temperature = seq(min(data$average_temperature),
-                                                max(data$average_temperature),
-                                                length = 100),
-                      average_noise = median(data$average_noise),
-                      tilt_angle = mean(data$tilt_angle))
-bwt_pred <- predict(mod_gamma, bwt_fit, type = 'response', se.fit = T)
+                                                    max(data$average_temperature),
+                                                    length = 100),
+                          average_noise = median(data$average_noise),
+                          tilt_angle = mean(data$tilt_angle))
+bwt_pred <- predict(mod$gam, bwt_fit, type = 'response', se.fit = T)
 
 margplot(bwt_pred, bwt_fit$average_temperature,
          xlab = 'BWT', ylab = 'Marginal effect on D50')
 ```
 
-That kinda worked. Try noise with BWT and tilt at their mean.
+Now noise. Temperature and tilt held at their mean.
 ```{r}
 noise_fit <- data.frame(average_temperature = mean(data$average_temperature),
                       average_noise = seq(min(data$average_noise),
                                           max(data$average_noise),
                                           length = 100),
                       tilt_angle = mean(data$tilt_angle))
-noise_pred <- predict(mod_gamma, noise_fit, type = 'response', se.fit = T)
+noise_pred <- predict(mod$gam, noise_fit, type = 'response', se.fit = T)
 
 
 margplot(noise_pred, noise_fit$average_noise,
@@ -118,23 +230,35 @@ tilt_fit <- data.frame(average_temperature = mean(data$average_temperature),
                        tilt_angle = seq(min(data$tilt_angle),
                                         max(data$tilt_angle),
                                         length = 100))
-tilt_pred <- predict(mod_gamma, tilt_fit, type = 'response', se.fit = T)
+tilt_pred <- predict(mod$gam, tilt_fit, type = 'response', se.fit = T)
 
 
 margplot(tilt_pred, tilt_fit$tilt_angle,
          xlab = 'Average tilt angle', ylab = 'Marginal effect on D50')
 ```
 
+### Overall predictions
+```{r}
+prediction <- predict(mod$gam, type = 'response', se = T)
+prediction <- cbind(data, prediction)
+
+plot(d50_adj ~ date, data = prediction[prediction$array == 'Inner',],
+     type = 'n', xlab = '', ylab = 'D50', main = 'Inner')
+with(prediction[prediction$array == 'Inner',], polygon(c(date, rev(date)), c(fit + 2 * se.fit, rev(fit - 2 * se.fit)), col = 'gray', border = NA))
+lines(fit ~ date, data = prediction[prediction$array == 'Inner',], col = 'black')
+lines(d50_adj ~ date, data = prediction[prediction$array == 'Inner',], col = 'red')
+```
 
 ```{r}
-mod_gamma_mix <- gam(d50_adj ~ s(average_temperature, bs = 'cs',
-                                      by  = as.factor(array)) +
-            s(average_noise, bs = 'cs',
-                                      by  = as.factor(array)) +
-            s(tilt_angle, bs = 'cs',
-                                      by  = as.factor(array)),
-            family = Gamma(),
-            method = 'REML',
-         data = data, select = T)
-summary(mod_gamma_mix)
+plot(d50_adj ~ date, data = prediction[prediction$array == 'MD WEA',],
+     type = 'n', xlab = '', ylab = 'D50', main = 'MD WEA')
+with(prediction[prediction$array == 'MD WEA',], polygon(c(date, rev(date)), c(fit + 2 * se.fit, rev(fit - 2 * se.fit)), col = 'gray', border = NA))
+lines(fit ~ date, data = prediction[prediction$array == 'MD WEA',], col = 'black')
+lines(d50_adj ~ date, data = prediction[prediction$array == 'MD WEA',], col = 'red')
 ```
+
+## Conclusion
+The model does a good job at predicting D50 through late-May, where it hovers around 1000m and has trouble picking up the larger spikes. This could be due to a few things:
+
+1) We have no way to pick up detections beyond 800m. Anything beyond that is completely made up by the binomial GLM that predicted the D50s in the first place; very large spikes in D50 may not be due to real effects that can be explained by the covariates.
+2) Different processes (thermocline formation, e.g.) are driving the detection range during this period. This suggests that the addition of a new term or the separate modeling of the summer and fall/winter/spring seasons.
