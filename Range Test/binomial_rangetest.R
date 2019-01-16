@@ -64,68 +64,43 @@ d50 <- -(lpm[, -2] %*% coef(mod2$gam)[-2]) / coef(mod2$gam)[2]
 
 
 
-rmvn <- function(n,mu,sig) { ## MVN random deviates
-  L <- mroot(sig)
-  m <- ncol(L)
-  t(mu + L %*% matrix(rnorm(m * n), m, n))
+# SE prediction ----
+# Using the posterior distribution of the distance parameter, simulate large number
+# of parameter values. This assumes that the parameter estimates are multivariate
+# normally distributed. Modified from help documentation of predict.gam().
+#
+# "Population prediction intervals": https://stackoverflow.com/a/35589393/7496818
+
+ci.pred <- function(n, obj, lpreds){
+  # n = number of draws
+  # obj = fitted model
+  # lpreds = linear predictor matrix of new data
+
+  param_reps <- MASS::mvrnorm(10000, coef(mod2$gam), vcov(mod2$gam))
+  estimate_reps <- rep(0, 10000)
+
+  for (i in 1:10000){
+    estimate_reps[i] <- -(lpreds[, -2] %*% param_reps[i, -2]) / param_reps[i, 2]
+  }
+
+  mod_d50 <- -(lpreds[, -2] %*% coef(mod2$gam)[-2]) / coef(mod2$gam)[2]
+  sd_estimate <- sqrt(var(estimate_reps))
+
+  out <- c(d50 = mod_d50,
+           uci = mod_d50 + 1.96 * sd_estimate,
+           lci = mod_d50 - 1.96 * sd_estimate)
+  out
 }
 
-br <- MASS::mvrnorm(10000, coef(mod2$gam), vcov(mod2$gam)) ## 1000 replicate param. vectors
-res <- rep(0, 10000)
+ci.pred(10000, mod2$gam, lpm)
 
-for (i in 1:10000){
-  res[i] <- -(lpm[, -2] %*% br[i, -2]) / br[i, 2] ## example non-linear function
-}
+lpm <- predict(mod2$gam, data.frame(distance = 1,
+                                    dt = -1),
+               type = 'lpmatrix', exclude = c('s(date_f)'))
 
+ci.pred(10000, mod2$gam, lpm)
 
-
-
-
-
-# SE through bootstrap ----
-## Bootstrapping
-library(boot)
-
-# Function to be bootstrapped
-boot_fun <- function(x, indices, form){
-  d <- x[indices,]
-  form <- as.formula(form)
-  fit <- mgcv::gam(form, family = 'binomial', data = d, method = 'REML')
-  coeffs <- coef(fit)
-
-  lpm <- predict(fit, data.frame(distance = seq(1, 1000, 10),
-                               dt = 0),
-                 type = 'lpmatrix')
-
-  # https://stackoverflow.com/a/35589393/7496818
-  # solve the following for dist, holding all terms but dist at a constant:
-  # logit(p) ~ intercept + (GLM/GAM solved terms) + dist_coef * dist
-  # logit(0.5) ~ intercept + (GLM/GAM solved terms) + dist_coef * D50
-  # 0 ~ intercept + (GLM/GAM solved terms) + dist_coef * D50
-  # -(intercept + (GLM/GAM solved terms)) ~ dist_coef * D50
-  # D50 ~ -(intercept + (GLM/GAM solved terms)) / dist_coef
-  #
-  # In words:
-  # negative sum of linear predictor matrix without the distance term,
-  # multiplied by their coefficients,
-  # then divided by the distance coef
-
-  d50 <- setNames(-sum(lpm[1, -2] * coef(fit)[-2]) / coef(fit)[2], 'd50')
-
-  # Returns the distance at 50% detection
-  d50
-}
-
-# Apply bootstrap
-l_e_boot <- function(data, form){
-  ncore <- as.integer(Sys.getenv('NUMBER_OF_PROCESSORS')) - 2
-
-  boot(data = data, statistic = boot_fun, R = 2500, form = form,
-       parallel = 'snow', ncpus = ncore)
-}
-
-test <- l_e_boot(p, pct_det ~ as.numeric(dist) + s(dt, bs = "ts"))
-
-# BCa (adjusted bootstrap percentile) 95% CIs
-boot.ci(test, type = 'basic') # BCa won't work unless R is large enough (thousands)
-
+lpm <- predict(mod2$gam, data.frame(distance = 1,
+                                    dt = -0.5),
+               type = 'lpmatrix', exclude = c('s(date_f)'))
+ci.pred(10000, mod2$gam, lpm)
