@@ -264,8 +264,10 @@ freq.cast <- reshape2::dcast(data = det.freq, date + array ~ distance,
 rec.cast <- reshape2::dcast(rec.data, date + array ~ Description,
                             fun.aggregate = mean, value.var = 'mean')
 
-env.vars <- full_join(freq.cast, d_probs) %>% full_join(rec.cast)
-
+env.vars_probs <- full_join(freq.cast, d_probs) %>% full_join(rec.cast)
+env.vars_freq <- det.freq %>%
+  select(date, array, distance, success, fail) %>%
+  full_join(rec.cast)
 # GGally::ggpairs(data = select(env.vars, array, D50, starts_with('Average'),
                               # 'Tilt angle'),
                 # aes(color = array))+
@@ -291,7 +293,11 @@ sst <- sst %>%
   group_by(array, date) %>%
   summarize(sst = mean(sst))
 
-env.vars <- env.vars %>%
+env.vars_probs <- env.vars_wide %>%
+  left_join(sst) %>%
+  mutate(dt = sst - `Average temperature`)
+
+env.vars_freq <- env.vars_freq %>%
   left_join(sst) %>%
   mutate(dt = sst - `Average temperature`)
 
@@ -306,11 +312,13 @@ met.data <- met.data %>%
   summarize_all(mean, na.rm = T) %>%
   select(-date.time)
 
-env.vars <- left_join(env.vars, met.data)
-# saveRDS(env.vars, 'data and imports/rangetest_logit_data.RDS')
+env.vars_probs <- left_join(env.vars_probs, met.data)
+env.vars_freq <- left_join(env.vars_freq, met.data)
+# saveRDS(env.vars_probs, 'data and imports/rangetest_logit_d50.RDS')
+saveRDS(env.vars_freq, 'data and imports/rangetest_logit_binary.RDS')
 
 # Correlations of the variables
-env.vars %>%
+env.vars_probs %>%
   select(array, D50, 12:28, -station) %>%
   data.frame %>%
   split(.$array) %>%
@@ -329,15 +337,16 @@ env.vars %>%
 
 # PCA of env vars
 library(vegan)
-pca <- rda(env.vars[env.vars$array == 'MD WEA', c(9, 12:16, 18:27)], scale = T)
+pca <- rda(env.vars_probs[env.vars_probs$array == 'MD WEA', c(9, 12:16, 18:27)],
+           scale = T)
 biplot(pca, type = c("text", "points"))
 
 
-ggplot() + geom_point(data = env.vars,
+ggplot() + geom_point(data = env.vars_probs,
                       aes(x = wvht, y = `Average noise`, color = array))
 
 
-GGally::ggpairs(data = env.vars, aes(color = array),
+GGally::ggpairs(data = env.vars_probs, aes(color = array),
                 columns = c('dpct', 'Average noise', 'Average temperature', 'Tilt angle',
                   'sst', 'dt', 'wdir', 'wspd', 'gst', 'wvht', 'dpd', 'apd', 'mwd',
                   'pres', 'atmp', 'wtmp'))
@@ -345,14 +354,14 @@ GGally::ggpairs(data = env.vars, aes(color = array),
 # Drop sst, wtmp in favor of Average temperature
 # Drop apd and dpd in favor of Average noise
 # Drop gst and wvht in favor of wspd
-GGally::ggpairs(data = env.vars, aes(color = array),
+GGally::ggpairs(data = env.vars_probs, aes(color = array),
                 columns = c('D50', 'Average noise', 'Average temperature', 'Tilt angle',
                             'dt', 'sst', 'wdir', 'wspd', 'mwd', 'pres', 'atmp'))
 # Clean up
 rm(freq.cast, met.data, rec.cast, sst, i)
 
 # d50 ~ environment modeling ----
-mod_data <- env.vars[, c('date', 'array', 'dpct', 'Average noise',
+mod_data <- env.vars_probs[, c('date', 'array', 'dpct', 'Average noise',
                          'Average temperature', 'Tilt angle',
                          'dt', 'wdir', 'wspd', 'mwd', 'pres', 'atmp')]
 mod <- glm(dpct ~ ., family = gaussian(link = 'inverse'),
