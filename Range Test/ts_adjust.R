@@ -1,28 +1,46 @@
+library(dplyr)
+#' ---
+#' title: "Removing outliers from D50 time series"
+#' author: Mike O'Brien
+#' ---
+#' ```{r setup, echo = FALSE}
+#' knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+#' ```
 data <- readRDS('data and imports/rangetest_logit_data.rds')
-data <- d_probs
 names(data) <- tolower(gsub(' ', '_', names(data)))
 
-# Remove outliers before modeling
-library(tsoutliers)
-
+# Remove outliers ----
+# The WEA array is much more noisy than
+# Two methods: tsoutliers::tso ('intervention analysis') and
+# forecast::tsclean (Friedman's "super smoother").
 d50_wea <- ts(na.omit(data[data$array == 'MD WEA', 'd50']))
-tso_wea <- tso(d50_wea, types = 'AO',
+
+tso_wea <- tsoutliers::tso(d50_wea, types = 'AO',
                tsmethod = 'auto.arima',
-               # cval = 5,
                maxit.iloop = 10, maxit.oloop = 10)
 plot(tso_wea)
 
 wea_adj <- tso_wea$yadj
-tso_wea2 <- tso(wea_adj, types = 'AO',
-               tsmethod = 'auto.arima',
-               # cval = 5,
-               maxit.iloop = 10, maxit.oloop = 10)
+f <- forecast::tsclean(d50_wea)
 
-
-f <- forecast::tsclean(wea_adj)
-
+plot(wea_adj, type = 'n')
+lines(d50_wea, lwd = 5)
+lines(wea_adj, lwd = 3, col = 'gray')
+lines(f, col = 'red')
 
 forecast::findfrequency(wea_adj)
+
+# Need to remove the two ridiculously incorrect points before trying to use
+# unsupervised outlier removal.
+data <- data %>%
+  group_by(array) %>%
+  mutate_at(vars(grep('d\\d\\d', names(.))),
+            funs(ifelse((. > (4 * lead(.)) & . > (4 * lag(.))) |
+                          . <= 0,
+                        ((lag(.) + lead(.)) / 2), .)))
+
+
+
 
 wea_adj <- ts(wea_adj, frequency = 9)
 plot(stl(wea_adj, s.window = 'p'))
