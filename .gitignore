@@ -50,3 +50,16 @@ Thumbs.db
 
 # Ellie's exploration
 Ellie's Docs/
+*inla*
+*Proj*
+*Vars*
+*proc*
+Data and imports/HabMod
+*.ini
+
+# Images
+*.jpeg
+*.png
+
+# Misc
+lab meeting*/
