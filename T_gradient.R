@@ -6,7 +6,7 @@ bwt <- filter(rec_events, Description == 'Average temperature') %>%
   mutate(date = date(Date.Time),
          Data = as.numeric(Data)) %>%
   group_by(date, Site, Lat, Long) %>%
-  summarize(bwt = mean(Data)) %>%
+  dplyr::summarize(bwt = mean(Data)) %>%
   data.frame()
 names(bwt) <- tolower(names(bwt))
 
@@ -32,9 +32,10 @@ library(ggplot2)
 ggplot(data = ribbon) +
   geom_ribbon(aes(x = date, ymin = min, ymax = max,
                   group = array, fill = array), alpha = 0.8, color = 'gray') +
-  labs(x = NULL, y = expression(Delta*T~'(Â°C)'), fill = NULL) +
+  labs(x = NULL, y = expression(Delta*T~'(°C)'), fill = NULL) +
   scale_x_date(date_breaks = '2 month', date_labels = '%b%y') +
+  geom_line(data = filter(all, site %in% c('IS2', 'AN3')),
+            aes(x = date, y = dt, group = site)) +
   theme_bw()+
   theme(text = element_text(size = 22))
-
 

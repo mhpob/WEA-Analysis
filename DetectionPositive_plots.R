@@ -9,9 +9,9 @@ sites <- sites[sites$`Cruise ID` == 201708,]
 
 library(TelemetryR); library(dplyr)
 dets <- vemsort('p:/obrien/biotelemetry/detections/offshore md/fish migration')
-load('p:/obrien/randomr/ACTactive.rda')
+load('p:/obrien/randomr/ACTall.rda')
 
-species <- left_join(data.frame(dets), ACTactive,
+species <- left_join(data.frame(dets), ACTall,
                      by = c('transmitter' = 'Tag.ID.Code.Standard')) %>%
   mutate(month = lubridate::month(date.local),
          year = ifelse(month %in% 10:12 |
@@ -19,12 +19,14 @@ species <- left_join(data.frame(dets), ACTactive,
                        lubridate::year(date.local) - 1999,
                        lubridate::year(date.local) - 2000),
          season = ifelse(month %in% 4:8 |
-                           (month == 3 & lubridate::day(date.local) %in% 16:31) |
-                           (month == 9 & lubridate::day(date.local) %in% 1:15),
+                           (month == 3) |
+                           (month == 8),
                          'Spring/Summer', 'Autumn/Winter'),
-         season = factor(paste0(season, year),
+         seasonyr = factor(paste0(season, year),
                          levels = c('Autumn/Winter17', 'Spring/Summer17',
-                                    'Autumn/Winter18')),
+                                    'Autumn/Winter18',
+                                    'Spring/Summer18',
+                                    'Autumn/Winter19')),
          Common.Name = case_when(
            grepl('striped', Common.Name, ignore.case = T) ~ 'Striped bass',
            grepl('c stur|^stur', Common.Name, ignore.case = T) ~ 'Atlantic sturgeon',
@@ -35,7 +37,7 @@ species <- left_join(data.frame(dets), ACTactive,
            c('Striped bass', 'Atlantic sturgeon', 'White shark', 'Dusky shark'))
 
 n_unique <- species %>%
-  group_by(station, Common.Name, season) %>%
+  group_by(station, Common.Name, seasonyr) %>%
   distinct(station, transmitter, .keep_all = T) %>%
   summarize(fish = n())
 
@@ -45,15 +47,21 @@ hold <- species %>%
   mutate(time.group = lubridate::floor_date(date.local, 'day')) %>%
   # distinct time group/station combos
   distinct(time.group, station, Common.Name, .keep_all = T) %>%
-  group_by(station, season, Common.Name) %>%
+  group_by(station, seasonyr, Common.Name) %>%
   summarize(DP = n()) %>%
   left_join(n_unique) %>%
   left_join(sites, by = c('station' = 'Site ID'))
 
 
+DP.sum <- aggregate(DP ~ Common.Name + seasonyr, data = hold, FUN = sum)
+DP.avg <- aggregate(DP ~ Common.Name + seasonyr, data = hold, FUN = mean)
+
+fish.sum <- aggregate(fish ~ Common.Name + seasonyr, data = hold, FUN = sum)
+fish.avg <- aggregate(fish ~ Common.Name + seasonyr, data = hold, FUN = mean)
+
 library(raster)
 midstates <- shapefile('p:/obrien/midatlantic/matl_states_land.shp')
-wea <- shapefile('c:/users/secor/desktop/gis products/md mammals/wind_planning_areas/Wind_Planning_Areas_06_20_2014.shp')
+wea <- shapefile('c:/users/secor lab/desktop/gis products/md mammals/wind_planning_areas/Wind_Planning_Areas_06_20_2014.shp')
 
 library(ggplot2)
 midstates <- fortify(midstates)
@@ -68,34 +76,34 @@ base_map <- ggplot() +
 
 
 base_map +
-  geom_point(data = filter(hold, grepl('Dusk', Common.Name)),
+  geom_point(data = filter(hold, grepl('sturg', Common.Name)),
              aes(x = `Dep Long_DD`, y = `Dep Lat_DD`, size = fish, color = DP)) +
-  facet_wrap(~ season, ncol = 2) +
+  facet_wrap(~ seasonyr, ncol = 2) +
   scale_color_gradient(low = 'black', high = 'red') +
-  labs(title = 'Dusky sharks', color = 'DPD', size = '# Fish') +
+  labs(title = 'Atlantic sturgeon', color = 'DPD', size = '# Fish') +
   guides(size = guide_legend(order = 1)) +
   theme_bw()
 ggsave('AS_DPD.jpeg', path = 'p:/rothermel/boemfinal/DPD', dpi = 300,
-       width = 6.5, height = 4, units = 'in', scale = 1.4)
+       width = 10, height = 8, units = 'in', scale = 0.9)
 
 base_map +
   geom_point(data = filter(hold, grepl('bass', Common.Name)),
              aes(x = `Dep Long_DD`, y = `Dep Lat_DD`, size = fish, color = DP)) +
-  facet_wrap(~ season, ncol = 2) +
+  facet_wrap(~ seasonyr, ncol = 2) +
   scale_color_gradient(low = 'black', high = 'red') +
   labs(title = 'Striped bass', color = 'DPD', size = '# Fish') +
   guides(size = guide_legend(order = 1)) +
   theme_bw()
 ggsave('SB_DPD.jpeg', path = 'p:/rothermel/boemfinal/DPD', dpi = 300,
-       width = 6.5, height = 4, units = 'in', scale = 1.4)
+       width = 10, height = 8, units = 'in', scale = 0.9)
 
 base_map +
   geom_point(data = filter(hold, grepl('White', Common.Name)),
              aes(x = `Dep Long_DD`, y = `Dep Lat_DD`, size = fish, color = DP)) +
-  facet_wrap(~ season, ncol = 2) +
+  facet_wrap(~ seasonyr                                                                                                                                                                                     , ncol = 2) +
   scale_color_gradient(low = 'black', high = 'red') +
   labs(title = 'White sharks', color = 'DPD', size = '# Fish') +
   guides(size = guide_legend(order = 1)) +
   theme_bw()
 ggsave('WS_DPD.jpeg', path = 'p:/rothermel/boemfinal/DPD', dpi = 300,
-       width = 6.5, height = 4, units = 'in', scale = 1.4)
+       width = 10, height = 8, units = 'in', scale = 0.9)

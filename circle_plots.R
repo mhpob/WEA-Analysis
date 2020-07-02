@@ -7,9 +7,9 @@ dets <- dets %>%
   left_join(dets)
 
 
-load('p:/obrien/randomr/ACTactive.rda')
+load('p:/obrien/randomr/ACTall.rda')
 
-species <- left_join(data.frame(dets), ACTactive,
+species <- left_join(data.frame(dets), ACTall,
                      by = c('transmitter' = 'Tag.ID.Code.Standard')) %>%
   mutate(Common.Name = ifelse(grepl('striped', Common.Name, ignore.case = T),
                               'Striped bass', Common.Name))
