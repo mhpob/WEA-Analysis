@@ -2,8 +2,12 @@ library(readxl); library(TelemetryR); library(dplyr)
 
 cl <- parallel::makeCluster(parallel::detectCores() - 1)
 detections <- vemsort('p:/obrien/biotelemetry/detections',
-                      clust = cl, prog_bar = T)
+                      clust = cl, prog_bar = T,
+                      creation_date = '2016-10-31')
 parallel::stopCluster(cl)
+
+# Clean up
+detections <- subset(detections,select=-c(12))
 
 boem_sb <- detections %>%
   filter(transmitter %in% paste('A69-9002',
@@ -11,8 +15,14 @@ boem_sb <- detections %>%
                                 sep = '-')) %>%
   mutate(depth = -1.2129 + sensor.value * 0.3032)
 
-tag_data <- read_excel('p:/obrien/biotelemetry/md wea habitat/data/wea tagging data.xlsx')
+tag_data <- read_excel('p:/obrien/biotelemetry/All Transmitters.xlsx')
+colnames(tag_data)[9] <- "Common.Name"
+tag_data[tag_data$Common.Name %in% 'Striped Bass','Common.Name'] <- 'Striped bass'
+sb_data <- filter(tag_data,Common.Name=="Striped bass")
 
-boem_sb <- left_join(boem_sb, tag_data, by = c('transmitter' = 'Tag ID'))
+all_sb <- left_join(detections, sb_data,
+                     by = c('transmitter' = 'Tag ID Code Standard'))
 
-saveRDS(boem_sb, file = 'data and imports/boem_sb.rds')
+all_sb <- all_sb[complete.cases(all_sb$Common.Name),]
+
+saveRDS(all_sb, file = 'data and imports/all_sb.rds')
