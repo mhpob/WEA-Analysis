@@ -38,6 +38,7 @@ vignettes/*.pdf
 *.rds
 *.nb.html
 *.docx
+*.pdf
 
 # Animation output
 images/
