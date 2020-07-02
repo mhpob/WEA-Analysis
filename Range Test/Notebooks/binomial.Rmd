@@ -1,0 +1,215 @@
+---
+title: "Modeling D50 as a Marginal Effect of Binomial GAMM"
+author: "Mike O'Brien"
+date: "Jan 16, 2019"
+output:
+  html_notebook: default
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+## Why am I switching the modeling framework?
+It seems that modeling D50 through a binomial GLM with logit link,
+```
+logit(detection probability) ~ distance
+```
+*then* modeling the modeled D50 through a gamma GAMM with inverse link
+```
+(D50)^-1 ~ temperature + noise + etc.
+```
+was not the way to go. The major issue is that, any error in calulating D50 was not carried over into the second model. We saw from needing to adjust the GLM-calculated D50 for outliers that this can lead to big issues--we wound up modeling a number that we more-or-less made up.
+
+## What now?
+The goal is to:
+
+1) Model detection probability as a function of distance and other environmental/receiver covariates.
+2) Once a good model is found, find the marginal effect of distance at the combinations of environmental/receiver covariates that we observe in the wild.
+3) Calculate D50 from the resulting conditional marginal effect.
+
+## Variable selection
+We've gone through variable selection in previous modeling iterations. The outcome was to use the following variables:
+
+- Average noise (mV)
+- Tilt angle (deg from up)
+- $\Delta T$ (deg C)
+- Wind direction (deg from N)
+- Wind speed ()
+- Wave height ()
+- Dominant wave period ()
+- Wave direction ()
+- Air pressure ()
+
+We'll stick with that, but also add in distance.
+
+## Modeling
+Load packages and data, changing `array` and `date` to factors.
+```{r message = FALSE, warning = FALSE}
+library(dplyr)
+library(mgcv)
+
+data <- readRDS('data and imports/rangetest_logit_binary.RDS') %>%
+  mutate(array = as.factor(array),
+         date_f = as.factor(date)) %>% 
+  rename(noise = `Average noise`,
+         tilt = `Tilt angle`)
+
+mod_data <- data[, names(data) %in% c('date_f', 'array', 'distance', 'success', 'fail',
+                                      'noise', 'tilt', 'dt', 'wdir', 'wspd', 'wvht',
+                                      'dpd', 'mwd', 'pres')]
+mod_data <- mod_data[complete.cases(mod_data[, !names(mod_data) %in% 'date']),]
+```
+
+GAMM using date as a random effect. $\Delta T$, tilt angle, and noise were recorded individually at each array, so I'll also allow them to vary randomly with array. Using `gamm` instead of `gam` here seems to help with computation time involved with the random date effect.
+```{r}
+mod <- gamm(cbind(success, fail) ~ distance +
+              s(dt, array, bs = 're') + s(dt, bs = 'ts') +
+              s(noise, array, bs = 're') + s(noise, bs = 'ts') +
+              s(tilt, array, bs = 're') + s(tilt, bs = 'ts') +
+              s(wdir, bs = 'ts')+
+              s(wspd, bs = 'ts') +
+              s(wvht, bs = 'ts') +
+              s(dpd, bs = 'ts') +
+              s(mwd, bs = 'ts') +
+              s(pres, bs = 'ts'),
+            random = list(date_f = ~1),
+            data = mod_data, family = 'binomial', method = 'ML')
+summary(mod$gam)
+anova(mod$gam)
+```
+
+Remove wave height.
+
+```{r}
+mod2 <- gamm(cbind(success, fail) ~ distance +
+              s(dt, array, bs = 're') + s(dt, bs = 'ts') +
+              s(noise, array, bs = 're') + s(noise, bs = 'ts') +
+              s(tilt, array, bs = 're') + s(tilt, bs = 'ts') +
+              s(wdir, bs = 'ts')+
+              s(wspd, bs = 'ts') +
+              s(dpd, bs = 'ts') +
+              s(mwd, bs = 'ts') +
+              s(pres, bs = 'ts'),
+            random = list(date_f = ~1),
+            data = mod_data, family = 'binomial', method = 'ML')
+
+summary(mod2$gam)
+```
+
+Remove tilt.
+
+```{r}
+mod3 <- gamm(cbind(success, fail) ~ distance +
+              s(dt, array, bs = 're') + s(dt, bs = 'ts') +
+              s(noise, array, bs = 're') + s(noise, bs = 'ts') +
+              s(wdir, bs = 'ts')+
+              s(wspd, bs = 'ts') +
+              s(dpd, bs = 'ts') +
+              s(mwd, bs = 'ts') +
+              s(pres, bs = 'ts'),
+            random = list(date_f = ~1),
+            data = mod_data, family = 'binomial', method = 'ML')
+
+summary(mod3$gam)
+```
+
+Remove wave direction.
+
+```{r}
+mod4 <- gamm(cbind(success, fail) ~ distance +
+              s(dt, array, bs = 're') + s(dt, bs = 'ts') +
+              s(noise, array, bs = 're') + s(noise, bs = 'ts') +
+              s(wdir, bs = 'ts')+
+              s(wspd, bs = 'ts') +
+              s(dpd, bs = 'ts') +
+              s(pres, bs = 'ts'),
+            random = list(date_f = ~1),
+            data = mod_data, family = 'binomial', method = 'ML')
+
+summary(mod4$gam)
+```
+
+
+Effects of wind direction, dominant wave period, and air pressure look linear.
+
+```{r}
+mod5 <- gamm(cbind(success, fail) ~ distance +
+              s(dt, array, bs = 're') + s(dt, bs = 'ts') +
+              s(noise, array, bs = 're') + s(noise, bs = 'ts') +
+              wdir +
+              s(wspd, bs = 'ts') +
+              dpd +
+              pres,
+            random = list(date_f = ~1),
+            data = mod_data, family = 'binomial', method = 'ML')
+
+summary(mod5$gam)
+```
+
+Final terms are distance, wind direction, dominant wave period, air pressure, $\Delta T$, noise, and wind speed.
+
+## Predictions
+
+```{r}
+pred_data <- data[, names(data) %in% c('date_f', 'array', 'noise', 'dt', 'wdir', 'wspd',
+                                      'dpd', 'pres')]
+pred_data <- pred_data[complete.cases(pred_data[, !names(pred_data) %in% 'date_f']),]
+pred_data <- pred_data %>% 
+  distinct(date_f, array, .keep_all = T) %>% 
+  mutate(distance = 1,
+         date = as.Date(date_f)) %>% 
+  filter(date <= '2018-08-19')
+```
+
+
+
+```{r}
+lpm <- predict(mod5$gam, pred_data,
+               type = 'lpmatrix',
+               exclude = grep('array', row.names(summary(mod5$gam)$s.table),
+                              value = T))
+```
+
+```{r}
+ci.pred <- function(n, obj, lpreds){
+  # n = number of draws
+  # obj = fitted model
+  # lpreds = linear predictor matrix of new data
+
+  param_reps <- MASS::mvrnorm(n, coef(obj), vcov(obj))
+  estimate_reps <- rep(0, n)
+
+  for (i in 1:100){
+    estimate_reps[i] <- -(lpreds[-2] %*% param_reps[i, -2]) / param_reps[i, 2]
+  }
+
+  mod_d50 <- -(lpreds[-2] %*% coef(obj)[-2]) / coef(obj)[2]
+  sd_estimate <- sqrt(var(estimate_reps))
+
+  out <- c(d50 = mod_d50,
+           uci = mod_d50 + 1.96 * sd_estimate,
+           lci = mod_d50 - 1.96 * sd_estimate)
+  out
+}
+
+d50_pred <- t(apply(lpm, 1, function(x) ci.pred(1000, mod5$gam, x)))
+pred_data <- cbind(pred_data, d50_pred)
+```
+
+```{r}
+library(ggplot2)
+
+ggplot() +
+  geom_ribbon(data = pred_data,
+              aes(x = as.Date(date_f), ymin = lci, ymax =  uci),
+              fill = 'gray', alpha = 0.5) +
+  geom_line(data = pred_data,
+            aes(x = as.Date(date_f), y = d50)) +
+  labs(x=NULL, y = 'Estimated D50') +
+  facet_wrap(~array, nrow = 2) +
+  theme_bw()
+```
+
+
+

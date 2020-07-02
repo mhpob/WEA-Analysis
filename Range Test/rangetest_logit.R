@@ -227,9 +227,10 @@ d50plot <- function(data, array, day){
     geom_segment(data = plot_dat,
                  aes(x = D50, y = 0, xend = D50, yend = 0.5)) +
     lims(x = c(0, 1000), y = c(0, 1)) +
-    labs(x = 'Distance', y = 'Frequency of Detection') +
-    coord_flip() +
-    theme_bw()
+    labs(x = 'Distance', y = 'Proportion Detected') +
+    # coord_flip() +
+    theme_bw() +
+    theme(text = element_text(size = 20))
 }
 
 # TS modeling ----

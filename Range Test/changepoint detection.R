@@ -1,44 +1,50 @@
 library(ggplot2); library(dplyr); library(changepoint)
 # https://tdhock.github.io/change-tutorial/RK-CptWorkshop.html
-# Needs changepoint version >2.2.4
-data <- readRDS('data and imports/rangetest_logit_data.rds')
+# Needs changepoint version >2.2.4 or variance estimation will break with PELT
+data <- readRDS('data and imports/rangetest_no_outliers.rds')
 wea_all <- data[data$array == 'MD WEA',]
 inner_all <- data[data$array == 'Inner',]
 
 # D50 ----
 # MD WEA
-cp_d50wea <- cpt.meanvar(na.omit(data[data$array == 'MD WEA', 'D50']),
+cp_d50wea <- cpt.meanvar(data[data$array == 'MD WEA',][['d50_adj']],
                       method = 'PELT', penalty = 'CROPS',
                       pen.value = c(15, 500))
 
 plot(cp_d50wea, diagnostic = T)
-abline(v = 1, col = 'blue')
+abline(v = 2, col = 'blue')
 
-plot(cp_d50wea, ncpts = 1)
-# abline(v = which(wea_all$date == '2018-04-11')) #tending date
+plot(cp_d50wea, ncpts = 2)
+abline(v = which(wea_all$date == '2018-04-11')) #tending date
+abline(v = which(wea_all$date == '2018-08-09')) #tending date
 cpwea_d50_dates <- wea_all[na.omit(
   cpts.full(cp_d50wea)[which(
     apply(cpts.full(cp_d50wea), 1,
           function(x) length(na.omit(x)))
-    == 1),]), 'date']
+    == 2),]), 'date'] #this number is the number of changepoints
 
+list(mean = param.est(param(cp_d50wea, ncpts = 2))[[1]],
+     stdev = sqrt(param.est(param(cp_d50wea, ncpts = 2))[[2]]))
 
 # Inner
-cp_d50inner <- cpt.meanvar(na.omit(data[data$array == 'Inner', 'D50']),
+cp_d50inner <- cpt.meanvar(data[data$array == 'Inner',][['d50_adj']],
                         method = 'PELT', penalty = 'CROPS',
                         pen.value = c(15, 500))
 plot(cp_d50inner, diagnostic = T)
-abline(v = 1, col = 'blue')
+abline(v = 3, col = 'blue')
 
-plot(cp_d50inner, ncpts = 1)
+plot(cp_d50inner, ncpts = 3)
+abline(v = which(wea_all$date == '2018-04-11')) #tending date
+abline(v = which(wea_all$date == '2018-08-09')) #tending date
 
 cpinn_d50_dates <- inner_all[na.omit(
   cpts.full(cp_d50inner)[which(
     apply(cpts.full(cp_d50inner), 1,
           function(x) length(na.omit(x)))
-    == 1),]), 'date']
+    == 3),]), 'date']
 
-
+list(mean = param.est(param(cp_d50inner, ncpts = 3))[[1]],
+     stdev = sqrt(param.est(param(cp_d50inner, ncpts = 3))[[2]]))
 
 # dT ----
 # MD WEA
@@ -147,20 +153,21 @@ cpinn_temp_dates <- inner_all[na.omit(
 
 # plotting ----
 cp_df <- data.frame(
-  start = c(min(wea_all$date), cpwea_dates,
-            min(inner_all$date), cpinn_dates),
-  end = c(cpwea_dates, max(wea_all$date),
-          cpinn_dates, max(inner_all$date)),
-  mean = c(param.est(param(cp_wea, ncpts = 2))[[1]],
-           param.est(param(cp_inner, ncpts = 1))[[1]]),
-  stdev = c(sqrt(param.est(param(cp_wea, ncpts = 2))[[2]]),
-            sqrt(param.est(param(cp_inner, ncpts = 1))[[2]])),
-  array = c(rep('MD WEA', 3), rep('Inner', 2)))
+  start = c(min(wea_all$date), pull(cpwea_d50_dates),
+            min(inner_all$date), pull(cpinn_d50_dates)),
+  end = c(pull(cpwea_d50_dates), max(wea_all$date),
+          pull(cpinn_d50_dates), max(inner_all$date)),
+  mean = c(param.est(param(cp_d50wea, ncpts = 2))[[1]],
+           param.est(param(cp_d50inner, ncpts = 3))[[1]]),
+  stdev = c(sqrt(param.est(param(cp_d50wea, ncpts = 2))[[2]]),
+            sqrt(param.est(param(cp_d50inner, ncpts = 3))[[2]])),
+  array = c(rep('MD WEA', 3), rep('Inner', 4)))
 
 
 ggplot() +
-  geom_ribbon(data = data, aes(x = date, ymin = D95, ymax = D5), fill = 'gray50')+
-  geom_line(data = data, aes(x = date, y = D50), lwd = 1) +
+  geom_ribbon(data = data, aes(x = date, ymin = d95_adj, ymax = d5_adj),
+              fill = 'lightgray')+
+  geom_line(data = data, aes(x = date, y = d50_adj), lwd = 1) +
   geom_segment(data = cp_df, aes(x = start, xend = end, y = mean, yend = mean),
                col = 'red', lwd = 1) +
   labs(x = NULL, y = 'D50') +
