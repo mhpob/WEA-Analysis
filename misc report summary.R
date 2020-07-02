@@ -2,16 +2,6 @@ library(lubridate); library(dplyr)
 
 rec.data <- readRDS("data and imports/rec_events.rds")
 
-setwd("p:/obrien/biotelemetry/md wea habitat/wea-analysis/data and imports")
-rec1 <- readRDS("rec_events.rds")
-rec2 <- readRDS("rec_events2.rds")
-library(dplyr)
-
-rec1 <- subset(rec1,select=-c(6))
-
-rec <- rbind(rec1, rec2)
-rec.data <- subset(rec,select=-c(9:11))
-
 # Temperature summary
 wt.data <- rec.data %>%
   filter(Description == 'Average temperature',
@@ -25,14 +15,14 @@ wt.data <- rec.data %>%
                          (month(Date.Time) == 9 & day(Date.Time) %in% 16:30),
                        year(Date.Time) - 1999, year(Date.Time) - 2000),
          season = ifelse(month(Date.Time) %in% 4:8 |
-                           (month(Date.Time) == 3 & day(Date.Time) %in% 16:31) |
-                           (month(Date.Time) == 9 & day(Date.Time) %in% 1:15),
+                           (month(Date.Time)==3) |
+                           (month(Date.Time)==8),
                          'SprSum', 'AutWin'),
          season = paste0(season, year))
 
 
 wt.data %>%
-  filter(season== "SprSum17") %>%
+  filter(season== "SprSum18") %>%
   group_by(day, array) %>%
   summarize(daily = mean(Data))%>%
   ungroup() %>%
@@ -66,17 +56,15 @@ noise.data <- rec.data %>%
                          (month(Date.Time) == 9 & day(Date.Time) %in% 16:30),
                        year(Date.Time) - 1999, year(Date.Time) - 2000),
          season = ifelse(month(Date.Time) %in% 4:8 |
-                           (month(Date.Time) == 3 & day(Date.Time) %in% 16:31) |
-                           (month(Date.Time) == 9 & day(Date.Time) %in% 1:15),
+                           (month(Date.Time) == 3) |
+                           (month(Date.Time) == 8),
                          'SprSum', 'AutWin'),
          season = paste0(season, year))
 
 noise.data %>%
   group_by(day, array) %>%
   summarize(daily = mean(Data))%>%
-  ungroup() %>%
-
-  # group_by(array) %>%
+  group_by(array) %>%
   summarize(min = min(daily),
             avg = mean(daily),
             max = max(daily))

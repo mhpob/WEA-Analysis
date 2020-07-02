@@ -1,28 +1,54 @@
 library(TelemetryR); library(dplyr)
 dets <- vemsort('p:/obrien/biotelemetry/detections/offshore md/fish migration')
 
-# levels(factor(dets$transmitter))
+dets <- dets %>%
+  mutate(cruise = case_when(date.local <= '2017-03-29' ~ '201703',
+                            date.local > '2017-03-29' &
+                              date.local <= '2017-08-23' ~ '201708',
+                            date.local > '2017-08-23' &
+                              date.local <= '2017-12-20' ~ '201712',
+                            date.local > '2017-12-20' &
+                              date.local <= '2018-04-11' ~ '201804',
+                            date.local > '2018-04-11' &
+                              date.local <= '2018-08-08' ~ '201808',
+                            T ~ '201812'),
+         array = case_when(grepl('I', station) ~ 'Inner',
+                           grepl('A', station) ~ 'MD WEA',
+                           T ~ 'Outer'))
 
-# Number of unique fish detected
-n_dets_all <- dets %>%
-  summarize(a = n_distinct(transmitter))
-
-# n_dets_201605 <- dets %>%
-#   filter(date.local > lubridate::ymd('20160228', tz = "America/New_York"),
-#          date.local <= lubridate::ymd('20160517', tz = "America/New_York")) %>%
-#   group_by(station) %>%
-#   summarize(a = n_distinct(transmitter))
 
 # Detections in wind energy area.
-load('p:/obrien/randomr/ACTactive.rda')
-species <- left_join(data.frame(dets), ACTactive,
-                     by = c('transmitter' = 'Tag.ID.Code.Standard')) %>%
-  mutate(Common.Name = ifelse(grepl('striped', Common.Name, ignore.case = T),
-                              'Striped bass', Common.Name))
+load('p:/obrien/randomr/ACTall.rda')
+species <- ACTall %>%
+  mutate(Common.Name = tolower(Common.Name),
+         Common.Name = case_when(
+           grepl('^sturgeon', Common.Name) ~ 'atlantic sturgeon',
+           grepl('black sea', Common.Name) ~ 'black sea bass',
+           T ~ Common.Name)) %>%
+  right_join(dets,
+            by = c('Tag.ID.Code.Standard' = 'transmitter'))
 
-n_spec_all <- species %>% group_by(Common.Name) %>%
-  distinct(transmitter, .keep_all = T) %>%
+# Total detections
+sp_overall <- species %>%
+  distinct(station, date.local, .keep_all = T) %>%
+  group_by(cruise) %>%
   summarize(n = n())
+
+# By array
+sp_array <- species %>%
+  distinct(station, date.local, .keep_all = T) %>%
+  mutate(Common.Name = ifelse(Common.Name == 'not identified', 'atlantic sturgeon',
+                              Common.Name)) %>% # assume the not identified are sturgeon
+  group_by(cruise, array, Common.Name) %>%
+  distinct(Tag.ID.Code.Standard, .keep_all = T) %>%
+  summarize(n = n())
+
+# Number of PIs
+PIs <- species %>%
+  group_by(cruise) %>%
+  distinct(cruise, Primary.Researcher) %>%
+  #take this out to check the actual number. Skomal is often repeated and NAs are given a category
+  summarize(n())
 
 # Note that the following were double-tagged by K. Dunton:
 # 27721/22456
