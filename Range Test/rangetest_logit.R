@@ -104,7 +104,7 @@ calc_det_freq <- function(data, time_unit){
       strsplit(df.data$station, '[_]'), '[', 2))
   df.data[is.na(df.data)] <- 0
   df.data$distance <- abs(df.data$d1 - df.data$d2)
-  df.data$distance <- ifelse(df.data$d2 == 2400, 2400, df.data$d2)
+  df.data$distance <- ifelse(df.data$d2 == 2400, 2400, df.data$distance)
 
   df.data$freq <- df.data$Freq / df.data$trials
   df.data$freq[df.data$freq > 1] <- 1
@@ -123,6 +123,8 @@ calc_det_freq <- function(data, time_unit){
 }
 
 array.spl <- lapply(array.spl, calc_det_freq, time_unit = 'day')
+
+
 for(i in seq_along(array.spl)){
   array.spl[[i]]$array <- names(array.spl)[i]
 }
