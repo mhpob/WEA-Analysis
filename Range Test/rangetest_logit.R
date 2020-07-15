@@ -83,8 +83,10 @@ calc_det_freq <- function(data, time_unit){
   # Count transmission/detection combinations, divide by total transmissions
   spl_time <- lapply(spl_time, function(x){
     temp <- xtabs(~ internal + station, data = x)
+    temp <- as.table(cbind(temp, pt_2400 = c(0, 0, 0)))
+    names(dimnames(temp)) <- c('internal', 'station')
     temp_df <- as.data.frame(temp, stringsAsFactors = F)
-    temp_df$trials <- rep(diag(temp), each = 3)
+    temp_df$trials <- rep(diag(temp), each = 4)
     temp_df$fail <- temp_df$trials - temp_df$Freq
     temp_df
   })
@@ -102,6 +104,7 @@ calc_det_freq <- function(data, time_unit){
       strsplit(df.data$station, '[_]'), '[', 2))
   df.data[is.na(df.data)] <- 0
   df.data$distance <- abs(df.data$d1 - df.data$d2)
+  df.data$distance <- ifelse(df.data$d2 == 2400, 2400, df.data$d2)
 
   df.data$freq <- df.data$Freq / df.data$trials
   df.data$freq[df.data$freq > 1] <- 1
