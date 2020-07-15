@@ -319,7 +319,7 @@ met.data <- met.data %>%
 env.vars_probs <- left_join(env.vars_probs, met.data)
 env.vars_freq <- left_join(env.vars_freq, met.data)
 # saveRDS(env.vars_probs, 'data and imports/rangetest_logit_d50.RDS')
-saveRDS(env.vars_freq, 'data and imports/rangetest_logit_binary.RDS')
+saveRDS(env.vars_freq, 'data and imports/rangetest_logit_binary_pt0.RDS')
 
 # Correlations of the variables
 env.vars_probs %>%
