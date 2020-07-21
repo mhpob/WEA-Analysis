@@ -1,0 +1,141 @@
+---
+title: "DLNM Sturgeon Model"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dlnm) ; library(mgcv); library(dplyr)
+
+sturgo <- read.csv("p:/obrien/biotelemetry/md wea habitat/wea-analysis/dlnm/sturgoSSTlags.csv",
+                   header = T)
+
+sturgo <- sturgo[, -1]
+
+sturgo[,2]<-as.POSIXct(sturgo[,2], format="%Y-%m-%d")
+
+sturgd<- aggregate(sturgo$freq,
+                   by = list(Site=sturgo$Site,
+                             Day=sturgo$Day,
+                             DOY=sturgo$DOY,
+                             CHLA=sturgo$CHLA,
+                             SST=sturgo$SST,
+                             Depth=sturgo$Depth,
+                             d50.s=sturgo$d50.s,
+                             time=sturgo$time,
+                             Season=sturgo$Season,
+                             Seasonb=sturgo$Seasonb,
+                             Year=sturgo$Year),FUN= "sum")
+
+colnames(sturgd)[12] <- "freq"
+
+Lags <- sturgo[c(1,2,28:57)]
+
+sturgda<-left_join(sturgd, Lags, by=c("Day","Site"))
+sturgd2<-sturgda[!duplicated(sturgda),]
+
+sturgd2 <- sturgd2[with(sturgd2,order(time,Site)),]
+
+# Log transform CHL-A
+sturgd2$CHLA <- log(sturgd2$CHLA)
+
+# Convert Site and Year to factors
+sturgd2$Site <- as.factor(sturgd2$Site)
+sturgd2$Year <- as.factor(sturgd2$Year)
+
+head(sturgd2)
+
+```
+
+#Assuming best model is:
+```{r, eval=FALSE}
+gam(freq ~ 
+      s(Q, L, bs = "cb", k = 10) + #cross-basis from dlnm package
+      s(Site, bs = 're') +
+      s(Year, bs = 're') +
+      s(CHLA, bs = 'tp') +
+      t2(DOY, Depth, bs=c("cp", "tp"), k = 6) +
+      offset(log(d50.s)),
+    data = data, family = ziP, method = "REML")
+```
+
+# Dong, is this correct?:
+
+`dlnm::s(..., bs = 'cb')` needs a matrix as input, which causes issues when providing a data frame to the `newdata` argument of `mgcv::predict.gam()`. To get around this, make sure that input data is a list.
+
+```{r, eval=FALSE}
+set.seed(12345)
+
+# Mix up data
+sturgdata <- sturgd2[sample(nrow(sturgd2)),]
+
+# Create 5 equally size folds
+folds <- cut(seq(1, nrow(sturgdata)), breaks=5, labels=FALSE)
+
+# Pre-allocate memory
+storage <- vector("list", 5)
+
+# Perform 5 fold cross validation
+for(i in 1:5){
+  # Segment data by fold using the which() function
+  StestIndices <- which(folds == i, arr.ind = TRUE)
+  StestData <- sturgdata[StestIndexes, ]
+  StrainData <- sturgdata[-StestIndexes, ]
+
+  
+  # Convert all input into a list
+  create_input_data <- function(model_data){
+    # Lag matrix
+    Q <- as.matrix(model_data[c(13:42)])
+    L <- matrix(0:(ncol(Q) - 1), nrow(Q), ncol(Q), byrow = TRUE)
+    
+    # Convert predictors to elements in a list
+    model_data <- as.list(model_data)
+    
+    # Add Q and L to that list
+    model_data[['Q']] <- Q
+    model_data[['L']] <- L
+    
+    model_data
+  }
+
+  # Train the model.
+  train_data <- create_input_data(StrainData)
+  Sfinal <- gam(freq ~ s(Q, L, bs="cb", k = 10) +
+                  s(Site, bs = 're') +
+                  s(Year, bs = 're') +
+                  s(CHLA, bs='tp') +
+                  t2(DOY, Depth, bs=c("cp", "tp"), k = 6) +
+                  offset(log(d50.s)),
+                data = train_data, family = ziP, method = "REML")
+  
+  
+  # Test the model
+  test_data <- create_input_data(StestData)
+
+  StestData$T1 = predict(Sfinal, test_data, type = "response")
+  storage[[i]] <- StestData
+}
+
+```
+
+Load the above (previously-run and saved).
+
+```{r}
+storage <- readRDS('p:/obrien/biotelemetry/md wea habitat/wea-analysis/dlnm/CV_SM6.rds')
+```
+
+# CV metrics
+## Not sure if this is correct, just using previous code.
+```{r}
+rmse <- sapply(storage, function(.) sqrt(mean((.$freq - .$T1) ^ 2, na.rm = T)))
+rmse
+mean(rmse)
+sd(rmse)
+```
+
