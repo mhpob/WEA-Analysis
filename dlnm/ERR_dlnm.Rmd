@@ -1,133 +1,203 @@
 ---
 title: "DLNM Sturgeon Model"
 output:
-  pdf_document: default
+  # pdf_document: default
   html_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = 'c:/users/darpa2/analysis/wea-analysis/dlnm')
 ```
+
+# TL;DR
+
+- We lose 570 observations (the whole first month) due to missing values in the lagged SST data
+  + It seems that SST was only downloaded for the days that the array was deployed, meaning that the first 30 days of lagged temperatures are missing
+  + **These data are available, so we should pursue including them in training/testing the model**
+- `Year` was treated as a continuous variable in model fitting. With 3 years, it should probably be a factor.
+
+
+# Load and maniuplate data
 
 ```{r}
-library(dlnm) ; library(mgcv); library(dplyr)
+# Load packages
+library(parallel); library(dlnm); library(mgcv); library(data.table)
 
-sturgo <- read.csv("p:/obrien/biotelemetry/md wea habitat/wea-analysis/dlnm/sturgoSSTlags.csv",
-                   header = T)
 
-sturgo <- sturgo[, -1]
+# Load file, dropping row names
+sturg <- fread("sturgoSSTlags.csv", drop = 1, col.names = tolower)
 
-sturgo[,2]<-as.POSIXct(sturgo[,2], format="%Y-%m-%d")
 
-sturgd<- aggregate(sturgo$freq,
-                   by = list(Site=sturgo$Site,
-                             Day=sturgo$Day,
-                             DOY=sturgo$DOY,
-                             CHLA=sturgo$CHLA,
-                             SST=sturgo$SST,
-                             Depth=sturgo$Depth,
-                             d50.s=sturgo$d50.s,
-                             time=sturgo$time,
-                             Season=sturgo$Season,
-                             Seasonb=sturgo$Seasonb,
-                             Year=sturgo$Year),FUN= "sum")
+# Reclass predictors, take log of CHL-A
+sturg <- sturg[, ':='(day = as.POSIXct(day, format = "%Y-%m-%d"),
+                      site = as.factor(site),
+                      year = as.factor(year),
+                      chla = log(chla))]
 
-colnames(sturgd)[12] <- "freq"
 
-Lags <- sturgo[c(1,2,28:57)]
+# Sum sturgeon presence for each combination of predictors and remove any with
+#   missing observations.
+sturg_agg <- sturg[, .(freq = sum(freq, na.rm = T)),
+                   by = c('site', 'day', 'doy', 'chla', 'sst', 'depth',
+                          'd50.s', 'time', 'season', 'seasonb', 'year')]
+sturg_agg <- na.omit(sturg_agg)
 
-sturgda<-left_join(sturgd, Lags, by=c("Day","Site"))
-sturgd2<-sturgda[!duplicated(sturgda),]
 
-sturgd2 <- sturgd2[with(sturgd2,order(time,Site)),]
+# Pull out SST lags from original data to join with aggregated presence
+sst_lags <- subset(sturg, select = grep('site|day|sst.', names(sturg), value = T))
 
-# Log transform CHL-A
-sturgd2$CHLA <- log(sturgd2$CHLA)
 
-# Convert Site and Year to factors
-sturgd2$Site <- as.factor(sturgd2$Site)
-sturgd2$Year <- as.factor(sturgd2$Year)
+# Join sturgeon presence and lags
+sturg <- sturg_agg[sst_lags, on = c('day', 'site'), nomatch = 0]
+sturg <- unique(sturg)
 
-head(sturgd2)
+sturg
 
 ```
 
-#Assuming best model is:
+# Model fitting
+
+When a model is fit using `mgcv::gam`, the input data is usually in a data frame. Here, however, we are putting each predictor into the element of a list rather than a column of a data frame. This is because we need a matrix of values to calculate the lagged smooth. See [Gasparrini et al. 2017](http://www.ag-myresearch.com/2017_gasparrini_biomet.html) and the [associated code](https://github.com/gasparrini/2017_gasparrini_Biomet_Rcodedata) for fitting the smooth, and [`?mgcv::linear.functional.terms`](https://www.rdocumentation.org/packages/mgcv/versions/1.8-31/topics/linear.functional.terms) for the math-ier `mgcv` stuff.
+
 ```{r, eval=FALSE}
-gam(freq ~ 
-      s(Q, L, bs = "cb", k = 10) + #cross-basis from dlnm package
-      s(Site, bs = 're') +
-      s(Year, bs = 're') +
-      s(CHLA, bs = 'tp') +
-      t2(DOY, Depth, bs=c("cp", "tp"), k = 6) +
-      offset(log(d50.s)),
-    data = data, family = ziP, method = "REML")
+# Convert data from data.frame to list
+sturg_list <- as.list(sturg)
+
+
+# Set up SST lag matrix, and assign to an element of the list
+sturg_list[['sst_lag_matrix']] <- 
+  as.matrix(
+    subset(sturg, select = grep('sst.', names(sturg), value = T))
+  )
+
+# Define lags, and assign to an element of the list
+sturg_list[['lag_num_matrix']] <- 
+  matrix(0:(ncol(sturg_list$sst_lag_matrix) - 1),
+         nrow(sturg_list$sst_lag_matrix),
+         ncol(sturg_list$sst_lag_matrix),
+         byrow = TRUE)
 ```
 
-# Dong, is this correct?:
-
-`dlnm::s(..., bs = 'cb')` needs a matrix as input, which causes issues when providing a data frame to the `newdata` argument of `mgcv::predict.gam()`. To get around this, make sure that input data is a list.
+Following previous model selection, we know that the best model is fit with the following code.
 
 ```{r, eval=FALSE}
-set.seed(12345)
+model <- gam(freq ~
+               s(sst_lag_matrix, lag_num_matrix, bs = 'cb', k = 10) +
+               s(site, bs = 're') +
+               s(year, bs = 're') + 
+               s(chla, bs = 'tp') +
+               t2(doy, depth, bs = c('cp', 'tp'), k = 6) +
+               offset(log(d50.s)),
+             data = sturg_list,
+             family = ziP,
+             method = 'REML')
+```
 
-# Mix up data
-sturgdata <- sturgd2[sample(nrow(sturgd2)),]
+However, this takes a while to run, so I'm just going to load a saved version.
 
-# Create 5 equally size folds
-folds <- cut(seq(1, nrow(sturgdata)), breaks=5, labels=FALSE)
+```{r}
+model <- readRDS('sturgeon_mod_SM6.rds')
+summary(model)
+```
 
-# Pre-allocate memory
-storage <- vector("list", 5)
+# 5-fold cross validation
+This takes a long time, so only showing the code. Will load a pre-saved version afterward.
 
-# Perform 5 fold cross validation
-for(i in 1:5){
-  # Segment data by fold using the which() function
-  StestIndices <- which(folds == i, arr.ind = TRUE)
-  StestData <- sturgdata[StestIndexes, ]
-  StrainData <- sturgdata[-StestIndexes, ]
+```{r, eval=FALSE}
+set.seed(8675309)
 
+# Shuffle data prior to divvying into folds
+sturg_shuffle <- sturg[sample(nrow(sturg))]
+
+
+# Create 5 equally-sized folds
+folds <- cut(seq(1, nrow(sturg_shuffle)),
+             breaks = 5, labels = FALSE)
+
+
+
+# Create model-fitting function to run in parallel
+fold_fit <- function(i){
+  test_indices <- which(folds == i, arr.ind = TRUE)
+  test_data <- sturg_shuffle[test_indices, ]
+  train_data <- sturg_shuffle[-test_indices, ]
   
-  # Convert all input into a list
+  
   create_input_data <- function(model_data){
-    # Lag matrix
-    Q <- as.matrix(model_data[c(13:42)])
-    L <- matrix(0:(ncol(Q) - 1), nrow(Q), ncol(Q), byrow = TRUE)
+    sturg_list <- as.list(model_data)
     
-    # Convert predictors to elements in a list
-    model_data <- as.list(model_data)
+    # Set up SST lag matrix, and assign to an element of the list
+    sturg_list[['sst_lag_matrix']] <- 
+      as.matrix(
+        subset(model_data, select = grep('sst.', names(model_data), value = T))
+      )
     
-    # Add Q and L to that list
-    model_data[['Q']] <- Q
-    model_data[['L']] <- L
+    # Define lags, and assign to an element of the list
+    sturg_list[['lag_num_matrix']] <- 
+      matrix(0:(ncol(sturg_list$sst_lag_matrix) - 1),
+             nrow(sturg_list$sst_lag_matrix),
+             ncol(sturg_list$sst_lag_matrix),
+             byrow = TRUE)
     
-    model_data
+    sturg_list
   }
-
-  # Train the model.
-  train_data <- create_input_data(StrainData)
-  Sfinal <- gam(freq ~ s(Q, L, bs="cb", k = 10) +
-                  s(Site, bs = 're') +
-                  s(Year, bs = 're') +
-                  s(CHLA, bs='tp') +
-                  t2(DOY, Depth, bs=c("cp", "tp"), k = 6) +
+  
+  
+  # Train the model
+  train_data <- create_input_data(train_data)
+  
+  cv_mod <- gam(freq ~
+                  s(sst_lag_matrix, lag_num_matrix, bs = 'cb', k = 10) +
+                  s(site, bs = 're') +
+                  s(year, bs = 're') + 
+                  s(chla, bs = 'tp') +
+                  t2(doy, depth, bs = c('cp', 'tp'), k = 6) +
                   offset(log(d50.s)),
-                data = train_data, family = ziP, method = "REML")
+                data = train_data,
+                family = ziP,
+                method = 'REML')
   
   
-  # Test the model
-  test_data <- create_input_data(StestData)
-
-  StestData$T1 = predict(Sfinal, test_data, type = "response")
-  storage[[i]] <- StestData
+  # Test the model, assign fitted values to test_data
+  test_data <- create_input_data(test_data)
+  
+  test_data$fit <- predict(cv_mod, test_data, type = "response")
+  
+  
+  # Export
+  list(cv_mod = cv_mod,
+       data = test_data)
 }
 
+
+
+# Create cluster to run models in parallel
+parallel_cluster <- makeCluster(detectCores() - 1)
+
+# Load packages in cluster
+clusterEvalQ(cl = parallel_cluster,
+             c(library(dlnm), library(mgcv), library(data.table)))
+
+# Export data to the cluster
+clusterExport(cl = parallel_cluster,
+              c('sturg_shuffle', 'folds'))
+
+
+
+# Perform 5-fold cross validation in parallel
+cv_results <- parLapply(1:5, fold_fit, cl = parallel_cluster)
+
+
+
+# Close cluster
+stopCluster(cl)
 ```
 
 Load the above (previously-run and saved).
 
 ```{r}
-storage <- readRDS('p:/obrien/biotelemetry/md wea habitat/wea-analysis/dlnm/CV_SM6.rds')
+cv_results <- readRDS('CV_sturgeon_mod_SM6.rds')
 ```
 
 # CV metrics
@@ -138,4 +208,58 @@ rmse
 mean(rmse)
 sd(rmse)
 ```
+
+
+
+
+
+
+
+
+## Quick partial effects plots
+```{r}
+plot(model)
+```
+
+And a quick view of the lag smooth.
+
+```{r}
+lag_preds <- crosspred('sst_lag_matrix', model, by = 1, cen = 0)
+
+plot(lag_preds, xlab = 'SST', ylab = 'Lag', ltheta = 170, phi = 35, lphi = 30)
+plot(lag_preds, 'contour', xlab = 'SST', ylab = 'Lag')
+```
+
+# Lag smooth
+The canned function for the partial effect of the lag smoother provides the "estimated associations defined on a grid of values of the original predictor and lags, **computed versus a reference predictor value**. Here, SST is centered, so the reference value is mean SST. Since the partial effect is computed versus this "reference predictor value", we are forcing 0°C SST to intersect with 0 effect on sturgeon presence. So, we are assuming that there is no effect of lagged temperature on sturgeon frequency when the lagged temperature equals 0°C (no difference in temperature between then and now). Below are partial effects plots, taking slices across SST for each lag. Standard errors are shown in the envelope.
+
+Note that negative SST means it was warmer however many lags ago, positive SST means it was cooler however many lags ago.
+
+```{r}
+pl_func <- function(cross_pred, lag){
+  plot(cross_pred, lag = lag, ylab = paste0('Outcome (lag=', lag, ')'),
+       xlab = 'SST', lwd = 1.5, main = '', ylim = c(-2, 2.5))
+}
+
+invisible(
+  lapply(0:29,
+         FUN = pl_func, cross_pred = lag_preds)
+)
+```
+
+Here’s what I’m seeing in the plots:
+
+- Slight (+) effect when SST was within 3-4 °C of today 3-7 days ago (lags 3-7)
+- Slight-to-mid (-) effect when SST was 4-7 °C warmer 11-15 days ago
+- Slight (-) when SST was 0-5 °C warmer 19-23 days ago
+- Strongest significant effect (+) when SST was 0-7 °C warmer 27-29 days ago
+- Small (-) effect 0-3 °C cooler 27-29 days ago
+
+
+
+
+
+
+
+
 
