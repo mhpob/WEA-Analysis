@@ -2,93 +2,93 @@
 rec_deployments <- readxl::read_excel(
   'p:/obrien/biotelemetry/md wea habitat/data/vr2ar deployment_recovery log.xlsx')
 
-library(lubridate); library(dplyr)
-rec_deployments <- rec_deployments %>%
-  filter(`Cruise ID` %in% c(201611, 201703, 201708, 201712,
-                            201804, 201808, 201812),
-         !is.na(`Dep VR2AR`)) %>%
-  mutate(`Dep VR2AR` = paste('VR2AR', `Dep VR2AR`, sep = '-')) %>%
-  select(`Cruise ID`, Date, `Site ID`, `Dep VR2AR`, `Dep Lat_DD`, `Dep Long_DD`)
+library(lubridate); library(data.table)
+rec_deployments <- setDT(rec_deployments)[!is.na(`Cruise ID`) &
+                                            !is.na(`Dep VR2AR`)]
+rec_deployments <- rec_deployments[, `Dep VR2AR` := paste('VR2AR', `Dep VR2AR`, sep = '-')]
+rec_deployments <- rec_deployments[, .(`Cruise ID`, Date, `Site ID`, `Dep VR2AR`,
+                                      `Dep Lat_DD`, `Dep Long_DD`)]
+
+# Special case of VR2AR-546462, which was considered lost on 201712 cruise, but
+#   found on 201804 cruise
+rec_deployments <- rbind(rec_deployments,
+                         rec_deployments[grepl('546462', `Dep VR2AR`) &
+                                           `Cruise ID` == 201708,])
+rec_deployments[133, 1:2] <- list(201712, 20171220)
+
 
 # Load receiver events, merge with location information
-rec_events_201703 <- read.csv(
-  'p:/obrien/biotelemetry/md wea habitat/data/wea_recevents_201611_201703.csv',
-  stringsAsFactors = F)
-rec_events_201708 <- read.csv(
-  'p:/obrien/biotelemetry/md wea habitat/data/wea_recevents_201703_201708.csv',
-  stringsAsFactors = F)
-rec_events_201712 <- read.csv(
-  'p:/obrien/biotelemetry/md wea habitat/data/wea_recevents_201708_201712.csv',
-  stringsAsFactors = F)
-rec_events_201804 <- read.csv(
-  'p:/obrien/biotelemetry/md wea habitat/data/wea_recevents_201712_201804.csv',
-  stringsAsFactors = F)
-rec_events_201808 <- read.csv(
-  'p:/obrien/biotelemetry/md wea habitat/data/wea_recevents_201804_201808.csv',
-  stringsAsFactors = F)
-rec_events_201812 <- read.csv(
-  'p:/obrien/biotelemetry/md wea habitat/data/wea_recevents_201808_201812.csv',
-  stringsAsFactors = F)
+rec_events <- lapply(list.files('p:/obrien/biotelemetry/md wea habitat/data',
+                                pattern = 'RecEvents.*.csv',
+                                full.names = T),
+                     fread, col.names = function(.) tolower(gsub('[) (/]', '', .)))
 
-rec_events <- rbind(rec_events_201703, rec_events_201708, rec_events_201712,
-                    rec_events_201804, rec_events_201808, rec_events_201812)
+rec_events <- rbindlist(rec_events, use.names = F)
 
-rec_events <- rec_events %>%
-  distinct(Date.Time, Receiver, Description, .keep_all = T) %>%
-  mutate(Date.Time = lubridate::ymd_hms(Date.Time))
+rec_events <- unique(rec_events, by = c('datetime', 'receiver', 'description'))
+rec_events <- rec_events[, datetime := lubridate::ymd_hms(datetime)]
+rec_events <- rec_events[, datetime_fover := datetime]
+setkey(rec_events, receiver, datetime, datetime_fover)
 
-cruise_id_key <- filter(rec_events, Description == 'Data Upload') %>%
-  mutate(Cruise = substr(Data, 14, 19),
-         Cruise = case_when(Cruise == 201703 ~ 201611,
-                            Cruise == 201708 ~ 201703,
-                            Cruise == 201712 ~ 201708,
-                            Cruise == 201804 ~ 201712,
-                            Cruise == 201808 ~ 201804,
-                            Cruise == 201812 ~ 201808)) %>%
-  group_by(Receiver, Cruise) %>%
-  summarize(min = min(Date.Time),
-            max = max(Date.Time)) %>%
-  arrange(Receiver, min) %>%
-  data.frame()
 
-for(i in 2:dim(cruise_id_key)[1]){
+cruise_id_key <- rec_events[description == 'Data Upload']
+cruise_id_key <- cruise_id_key[, cruise := substr(data, 14, 19)]
+cruise_id_key <- cruise_id_key[, cruise := fcase(cruise == 201703, 201611,
+                                                 cruise == 201708, 201703,
+                                                 cruise == 201712, 201708,
+                                                 cruise == 201804, 201712,
+                                                 cruise == 201808, 201804,
+                                                 cruise == 201812, 201808)]
+cruise_id_key <- cruise_id_key[, .(min = min(datetime),
+                                   max = max(datetime)),
+                               by = c('receiver', 'cruise')]
+
+# Special case of VR2AR-546462, which was considered lost on 201712 cruise, but
+#   found on 201804 cruise
+cruise_id_key[grepl('462$', receiver) &
+                cruise == 201712, 'min'] <- lubridate::ymd_hms('2017-12-20 08:38:00')
+cruise_id_key <- rbind(cruise_id_key,
+                       list('VR2AR-546462', 201708,
+                            lubridate::ymd_hms('2017-08-23 12:13:21'),
+                            lubridate::ymd_hms('2017-12-20 08:37:59')))
+
+cruise_id_key <- cruise_id_key[order(receiver, min)]
+
+
+for(i in 2:nrow(cruise_id_key)){
   if(cruise_id_key$min[i] == cruise_id_key$max[i]){
     cruise_id_key$min[i] <- cruise_id_key$max[i - 1] + 1
   }
 
 }
+setkey(cruise_id_key, receiver, min, max)
 
-rec_events <- left_join(rec_events, cruise_id_key, by = 'Receiver')
-rec_events$test <- rec_events$Date.Time %within%
-  interval(rec_events$min, rec_events$max)
-rec_events <- rec_events[rec_events$test == T, ]
-rec_events <- rec_events[, 1:6]
+rec_events <- foverlaps(rec_events, cruise_id_key,
+                         by.x = c('receiver', 'datetime', 'datetime_fover'),
+                         by.y = c('receiver', 'min', 'max'),
+                         mult = 'last')
+rec_events <- rec_events[, .(receiver, cruise, datetime, description, data, units)]
 
 
-rec_events <- left_join(rec_events, rec_deployments,
-                        by = c('Receiver' = 'Dep VR2AR',
-                               'Cruise' = 'Cruise ID'))
+rec_events <- rec_events[rec_deployments, on = c(receiver = 'Dep VR2AR',
+                                                 cruise = 'Cruise ID')]
 
-names(rec_events) <- c('Date.Time', 'Receiver', 'Description', 'Data', 'Units',
-                       'Tend.Cruise', 'C.Date', 'Site', 'Lat', 'Long')
+names(rec_events) <- c('receiver', 'tend.cruise', 'datetime', 'description',
+                       'data', 'units', 'c.date', 'site', 'lat', 'long')
 
 # There are issues with the tilt angle of receivers due to deployment differences
 # which create different baselines. Calculate the median per receiver per deployment
 # period, and subtract it from every value. Then take the absolute value.
-tilt <- rec_events %>%
-  filter(Description == 'Tilt angle') %>%
-  group_by(Receiver, Tend.Cruise) %>%
-  summarize(med.tilt = median(as.numeric(Data), na.rm = T)) %>%
-  right_join(filter(rec_events, Description == 'Tilt angle')) %>%
-  mutate(Data = abs(as.numeric(Data) - med.tilt),
-         Data = as.character(Data)) %>%
-  select('Date.Time', 'Receiver', 'Description', 'Data', 'Units',
-         'Tend.Cruise', 'C.Date', 'Site', 'Lat', 'Long')
+tilt <- rec_events[description == 'Tilt angle']
+tilt <- tilt[, .(med.tilt = median(as.numeric(data), na.rm = T)),
+             by = c('receiver', 'tend.cruise')]
+tilt <- rec_events[description == 'Tilt angle'][tilt, on = c('receiver', 'tend.cruise')]
+tilt <- tilt[, data := abs(as.numeric(data) - med.tilt)]
+tilt <- tilt[, -'med.tilt']
 
-rec_events <- rec_events %>%
-  filter(Description != 'Tilt angle') %>%
-  bind_rows(tilt)
+rec_events <- rec_events[description != 'Tilt angle']
+rec_events <- rbind(rec_events, tilt)
 
-rec_events <- rec_events[, names(rec_events) != 'C.Date']
+rec_events <- rec_events[, -'c.date']
 
 saveRDS(rec_events, file = 'data and imports/rec_events.rds')
