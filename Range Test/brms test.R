@@ -4,21 +4,23 @@ data$sc_dist <- scale(data$distance)
 
 
 library(brms)
+options(mc.cores = parallel::detectCores() - 2)
 
 j <- brm(success | trials(success + fail) ~ sc_dist + (sc_dist|n_date) + (1|array),
          data = data,
          family = 'binomial',
-         chains = 6,
-         iter = 5000,
-         cores = 6,
-         control = list(adapt_delta = 0.98),
-         file = 'two_array_d50_brms_model_pt0_adaptd')
+         chains = 4,
+         iter = 25000,
+         warmup = 20000,
+         cores = 4,
+         control = list(adapt_delta = 0.999),
+         file = 'two_array_d50_brms_model_pt0_adaptd_MOAR2')
 
 plot(j) # look for caterpillars, not waves
 pp_check(j) #look for overlay
 
 plot.ts((-coef(j)$n_date[, 1, 'Intercept'] / coef(j)$n_date[, 1, 'sc_dist'] *
-          sd(data$distance)) + mean(data$distance))
+          sd(data$distance)) + mean(data$distance), ylim = c(0, 2500))
 lines((-coef(j)$n_date[, 3, 'Intercept'] / coef(j)$n_date[, 3, 'sc_dist'] *
          sd(data$distance)) + mean(data$distance))
 lines((-coef(j)$n_date[, 4, 'Intercept'] / coef(j)$n_date[, 4, 'sc_dist'] *
@@ -88,16 +90,16 @@ j <- spread_draws(m, r_n_date[, Intercept])
 
 
 
-mod <- readRDS('p:/obrien/biotelemetry/md wea habitat/wea-analysis/two_array_d50_brms_model.rds')
+mod <- readRDS('p:/obrien/biotelemetry/md wea habitat/wea-analysis/two_array_d50_brms_model_pt0_adaptd.rds')
 r_eff <- ranef(mod)
 
-library(tidybayes)
+library(tidybayes); library(dplyr)
 get_variables(mod)
 k <- mod %>%
-  spread_draws(r_n_date[day, term], r_array[array,], b_Intercept, b_sc_dist) %>%
+  spread_draws(r_n_date[day, term], b_Intercept, b_sc_dist) %>%
   tidyr::pivot_wider(names_from = term, values_from = r_n_date)
 k <- k %>%
-  mutate(d50 = (-(b_Intercept + Intercept + r_array) / (b_sc_dist + sc_dist)) *
+  mutate(d50 = (-(b_Intercept + Intercept) / (b_sc_dist + sc_dist)) *
            sd(data$distance) + mean(data$distance))
 
 l <- k %>%
