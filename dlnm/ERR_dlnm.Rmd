@@ -1,13 +1,14 @@
 ---
 title: "DLNM Sturgeon Model"
 output:
-  # pdf_document: default
+  pdf_document: default
   html_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root.dir = 'c:/users/darpa2/analysis/wea-analysis/dlnm')
+# knitr::opts_knit$set(root.dir = 'c:/users/darpa2/analysis/wea-analysis/dlnm')
+knitr::opts_knit$set(root.dir = 'p:/obrien/biotelemetry/md wea habitat/wea-analysis/dlnm')
 ```
 
 # TL;DR
@@ -16,6 +17,8 @@ knitr::opts_knit$set(root.dir = 'c:/users/darpa2/analysis/wea-analysis/dlnm')
   + It seems that SST was only downloaded for the days that the array was deployed, meaning that the first 30 days of lagged temperatures are missing
   + **These data are available, so we should pursue including them in training/testing the model**
 - `Year` was treated as a continuous variable in model fitting. With 3 years, it should probably be a factor.
+- Mean RMSE of the model is 0.29 +/- 0.03 (I think). Unfortunately I don't really know what to do with that information... hoping Ellie might have an idea of what to do with that information.
+- While the "biggest" effects happen at the smallest lags, they have high error and so are not significant. Larger lags have smaller errors, so their effect might be smaller, but they are different from 0. This is especially true when temperatures were ~5 °C warmer 27-29 days ago.
 
 
 # Load and maniuplate data
@@ -102,6 +105,7 @@ summary(model)
 ```
 
 # 5-fold cross validation
+
 This takes a long time, so only showing the code. Will load a pre-saved version afterward.
 
 ```{r, eval=FALSE}
@@ -194,16 +198,14 @@ cv_results <- parLapply(1:5, fold_fit, cl = parallel_cluster)
 stopCluster(cl)
 ```
 
-Load the above (previously-run and saved).
+## Cross validation metrics
+
+Load the above (previously-run and saved). The loaded object is a 5-part list. Each element is another list, with the full model fit and data for each fold in the two parts of the list.
 
 ```{r}
 cv_results <- readRDS('CV_sturgeon_mod_SM6.rds')
-```
 
-# CV metrics
-## Not sure if this is correct, just using previous code.
-```{r}
-rmse <- sapply(storage, function(.) sqrt(mean((.$freq - .$T1) ^ 2, na.rm = T)))
+rmse <- sapply(cv_results, function(.) sqrt(mean((.$data$freq - .$data$fit) ^ 2, na.rm = T)))
 rmse
 mean(rmse)
 sd(rmse)
@@ -216,7 +218,10 @@ sd(rmse)
 
 
 
-## Quick partial effects plots
+# Quick partial effects plots
+
+These are just the canned partial effects of the smooths that are spit out. Haven't yet coded marginal effects at representative cases of other variables.
+
 ```{r}
 plot(model)
 ```
@@ -230,10 +235,18 @@ plot(lag_preds, xlab = 'SST', ylab = 'Lag', ltheta = 170, phi = 35, lphi = 30)
 plot(lag_preds, 'contour', xlab = 'SST', ylab = 'Lag')
 ```
 
-# Lag smooth
+## Lag smooth
 The canned function for the partial effect of the lag smoother provides the "estimated associations defined on a grid of values of the original predictor and lags, **computed versus a reference predictor value**. Here, SST is centered, so the reference value is mean SST. Since the partial effect is computed versus this "reference predictor value", we are forcing 0°C SST to intersect with 0 effect on sturgeon presence. So, we are assuming that there is no effect of lagged temperature on sturgeon frequency when the lagged temperature equals 0°C (no difference in temperature between then and now). Below are partial effects plots, taking slices across SST for each lag. Standard errors are shown in the envelope.
 
 Note that negative SST means it was warmer however many lags ago, positive SST means it was cooler however many lags ago.
+
+Here’s what I’m seeing in the plots:
+
+- Slight (+) effect when SST was within 3-4 °C of today 3-7 days ago (lags 3-7)
+- Slight-to-mid (-) effect when SST was 4-7 °C warmer 11-15 days ago
+- Slight (-) when SST was 0-5 °C warmer 19-23 days ago
+- Strongest significant effect (+) when SST was 0-7 °C warmer 27-29 days ago
+- Small (-) effect 0-3 °C cooler 27-29 days ago
 
 ```{r}
 pl_func <- function(cross_pred, lag){
@@ -246,20 +259,3 @@ invisible(
          FUN = pl_func, cross_pred = lag_preds)
 )
 ```
-
-Here’s what I’m seeing in the plots:
-
-- Slight (+) effect when SST was within 3-4 °C of today 3-7 days ago (lags 3-7)
-- Slight-to-mid (-) effect when SST was 4-7 °C warmer 11-15 days ago
-- Slight (-) when SST was 0-5 °C warmer 19-23 days ago
-- Strongest significant effect (+) when SST was 0-7 °C warmer 27-29 days ago
-- Small (-) effect 0-3 °C cooler 27-29 days ago
-
-
-
-
-
-
-
-
-
