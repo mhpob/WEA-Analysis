@@ -59,209 +59,187 @@ sturgd_list$CHLA <- log(sturgd_list$CHLA)
 #   ... chances are that you need to change something from a character to a factor.
 sturgd_list$Site <- as.factor(sturgd_list$Site)
 
-SM1 <- gam(freq~s(Qs2,Ls2,bs="cb",k=10)+s(Site, bs = 're')+
+
+# Pulling out all of the formulas to fit the models in parallel
+forms <- c("freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
              s(Year, bs = 're')+
              s(CHLA,bs='tp')+
-             s(DOY,bs="cs",k=6)+
+             s(DOY,bs='cs',k=6)+
              s(Depth,bs='tp')+
-             offset(log(d50.s)),
-           data=sturgd2,family=ziP,method="REML")
-
-SM2 <- gam(freq~s(Qs2,Ls2,bs="cb",k=10)+s(Site, bs = 're')+
+             offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
              s(Year, bs = 're')+
              s(CHLA,bs='tp')+
-             s(DOY,bs="cs",k=6)+
-             offset(log(d50.s)),
-           data=sturgd2,family=ziP,method="REML")
-
-SM3 <- gam(freq~s(Qs2,Ls2,bs="cb",k=10)+s(Site, bs = 're')+
+             s(DOY,bs='cs',k=6)+
+             offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
              s(Year, bs = 're')+
              s(CHLA,bs='tp')+
              s(Depth,bs='tp')+
-             offset(log(d50.s)),
-           data=sturgd2,family=ziP,method="REML")
-
-SM4 <- gam(freq~s(Qs2,Ls2,bs="cb",k=10)+s(Site, bs = 're')+
+             offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
              s(Year, bs = 're')+
-             s(DOY,bs="cs",k=6)+
+             s(DOY,bs='cs',k=6)+
              s(Depth,bs='tp')+
-             offset(log(d50.s)),
-           data=sturgd2,family=ziP,method="REML")
-
-SM5 <- gam(freq~s(Site, bs = 're')+
+             offset(log(d50.s))",
+           "freq~s(Site, bs = 're')+
              s(Year, bs = 're')+
              s(CHLA,bs='tp')+
-             s(DOY,bs="cs",k=6)+
+             s(DOY,bs='cs',k=6)+
              s(Depth,bs='tp')+
-             offset(log(d50.s)),
-           data=sturgd2,family=ziP,method="REML")
-
-SM6 <- gam(freq~s(Qs2,Ls2,bs="cb",k=10)+s(Site, bs = 're')+
+             offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
              s(Year, bs = 're')+
              s(CHLA,bs='tp')+
-             t2(DOY,Depth,bs=c("cp", "tp"),k=6)+
-             offset(log(d50.s)),
-           data=sturgd2,family=ziP,method="REML")
-
-SM7 <- gam(freq~s(Qs2,Ls2,bs="cb",k=10)+s(Site, bs = 're')+
+             t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
+             offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
              s(Year, bs = 're')+
-             t2(DOY,Depth,bs=c("cp", "tp"),k=6)+
-             offset(log(d50.s)),
-           data=sturgd2,family=ziP,method="REML")
-
-SM8 <- gam(freq~s(Site, bs = 're')+
+             t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
+             offset(log(d50.s))",
+           "freq~s(Site, bs = 're')+
              s(Year, bs = 're')+
              s(CHLA,bs='tp')+
-             t2(DOY,Depth,bs=c("cp", "tp"),k=6)+
-             offset(log(d50.s)),
-           data=sturgd2,family=ziP,method="REML")
-
-SM9 <- gam(freq~s(Site, bs = 're')+
+             t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
+             offset(log(d50.s))",
+           "freq~s(Site, bs = 're')+
              s(Year, bs = 're')+
-             t2(DOY,Depth,bs=c("cp", "tp"),k=6)+
-             offset(log(d50.s)),
-           data=sturgd2,family=ziP,method="REML")
-
-SM10 <- gam(freq~s(Qs2,Ls2,bs="cb",k=10)+s(Site, bs = 're')+
+             t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
+             offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(Depth,bs='tp')+
-              t2(DOY,CHLA,bs=c("cp", "tp"),k=6)+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
-
-SM11 <- gam(freq~s(Qs2,Ls2,bs="cb",k=10)+s(Site, bs = 're')+
+              t2(DOY,CHLA,bs=c('cp', 'tp'),k=6)+
+              offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              t2(DOY,CHLA,bs=c("cp", "tp"),k=6)+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
-
-SM12 <- gam(freq~s(Site, bs = 're')+
+              t2(DOY,CHLA,bs=c('cp', 'tp'),k=6)+
+              offset(log(d50.s))",
+           "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(Depth,bs='tp')+
-              t2(DOY,CHLA,bs=c("cp", "tp"),k=6)+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
-
-SM13 <- gam(freq~s(Site, bs = 're')+
+              t2(DOY,CHLA,bs=c('cp', 'tp'),k=6)+
+              offset(log(d50.s))",
+           "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              t2(DOY,CHLA,bs=c("cp", "tp"),k=6)+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
-
-SM14 <- gam(freq~s(Qs2,Ls2,bs="cb",k=10)+s(Site, bs = 're')+
+              t2(DOY,CHLA,bs=c('cp', 'tp'),k=6)+
+              offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(DOY,bs="cs",k=6)+
-              t2(Depth,CHLA,bs=c("tp", "tp"),k=6)+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
-
-SM15 <- gam(freq~s(Qs2,Ls2,bs="cb",k=10)+s(Site, bs = 're')+
+              s(DOY,bs='cs',k=6)+
+              t2(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
+              offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              t2(Depth,CHLA,bs=c("tp", "tp"),k=6)+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
-
-SM16 <- gam(freq~s(Site, bs = 're')+
+              t2(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
+              offset(log(d50.s))",
+           "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(DOY,bs="cs",k=6)+
-              t2(Depth,CHLA,bs=c("tp", "tp"),k=6)+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
-
-SM17 <- gam(freq~s(Site, bs = 're')+
+              s(DOY,bs='cs',k=6)+
+              t2(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
+              offset(log(d50.s))",
+           "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              t2(Depth,CHLA,bs=c("tp", "tp"),k=6)+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
-
-SM18 <- gam(freq~s(Qs2,Ls2,bs="cb",k=10)+s(Site, bs = 're')+
+              t2(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
+              offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(DOY,bs="cs",k=6)+
+              s(DOY,bs='cs',k=6)+
               s(Depth,bs='tp')+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
-
-SM19 <- gam(freq~s(Site, bs = 're')+
+              offset(log(d50.s))",
+           "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(DOY,bs="cs",k=6)+
+              s(DOY,bs='cs',k=6)+
               s(Depth,bs='tp')+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
-
-SM20 <- gam(freq~s(Qs2,Ls2,bs="cb",k=10)+s(Site, bs = 're')+
+              offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              t2(DOY,Depth,bs=c("cp", "tp"),k=6)+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
-
-SM21 <- gam(freq~s(Qs2,Ls2,bs="cb",k=10)+s(Site, bs = 're')+
+              t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
+              offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(CHLA,bs='tp')+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
-
-SM22 <- gam(freq~s(Site, bs = 're')+
+              offset(log(d50.s))",
+           "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(CHLA,bs='tp')+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
-
-SM23 <- gam(freq~s(Qs2,Ls2,bs="cb",k=10)+s(Site, bs = 're')+
+              offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(DOY,bs="cs",k=6)+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
-
-SM24 <- gam(freq~s(Site, bs = 're')+
+              s(DOY,bs='cs',k=6)+
+              offset(log(d50.s))",
+           "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(DOY,bs="cs",k=6)+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
-
-SM25 <- gam(freq~s(Qs2,Ls2,bs="cb",k=10)+s(Site, bs = 're')+
+              s(DOY,bs='cs',k=6)+
+              offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(Depth,bs='tp')+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
-
-SM26 <- gam(freq~s(Site, bs = 're')+
+              offset(log(d50.s))",
+           "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(Depth,bs='tp')+
-              offset(log(d50.s)),
-            data=sturgd2,family=ziP,method="REML")
+              offset(log(d50.s))")
+
+# remove the carriage returns (I was too lazy to do anything but copy/paste)
+forms <- gsub('\n', ' ', forms)
 
 
-summary(SM1)
-AIC(SM1,SM2,SM3,SM4,SM5,SM6,SM7,SM8,SM9,SM10,
-    SM11,SM12,SM13,SM14,SM15,SM16,SM17,SM18,SM19,SM20,
-    SM21,SM22,SM23,SM24,SM25,SM26)
+# Set up cluster    -MOB
+library(parallel)
+cl <- detectCores(logical = F) - 1
+cl <- makeCluster(cl)
+clusterEvalQ(cl, list(library(dlnm), library(mgcv)))
+clusterExport(cl, 'sturgd_list')
 
-summary(SM6)
-summary(SM7)
-summary(SM10)
-summary(SM11)
-summary(SM1)
 
-plot(SM6)
+# Fit models  -MOB
+as_models <- parLapply(cl,
+                       forms,
+                       function(.){
+                         gam(formula = as.formula(.),
+                             data = sturgd_list,
+                             family = ziP,
+                             method = 'REML')
+                       })
+
+# Close cluster
+stopCluster(cl)
+
+names(as_models) <- paste0('SM', 1:26)
+
+# saveRDS(as_models, 'sturg_lag_models.RDS')
+
+summary(as_models$SM1)
+
+ic <- data.frame(AIC = sapply(as_models, AIC))
+ic$dAIC <- ic$AIC - min(ic$AIC)
+ic <- ic[order(ic$dAIC),]
+
+
+## SM6 and SM7 seem to be equally-likely candidates.
+## SM7 and SM20, as well as SM4 and SM18 are the same models.
+
+
 
 ## Now for striped bass
-bassn<-read.csv("Bass_full.csv",header=T)
+bassn<-read.csv("dlnm/Bass_full.csv",header=T)
 bassn <- subset(bassn,select=-c(1))
 
 bassn[,2]<-as.POSIXct(bassn[,2],format="%Y-%m-%d")
 
 bassd<- aggregate(bassn$freq,
-                   by = list(Site=bassn$Site,
-                             Day=bassn$Day,
-                             DOY=bassn$DOY,
-                             CHLA=bassn$CHLA,
-                             SST=bassn$SST,
-                             Depth=bassn$Depth,
-                             d50.b=bassn$d50.b,
-                             time=bassn$time,
-                             Season=bassn$Season,
-                             Seasonb=bassn$Seasonb,
-                             Year=bassn$Year),FUN= "sum")
+                  by = list(Site=bassn$Site,
+                            Day=bassn$Day,
+                            DOY=bassn$DOY,
+                            CHLA=bassn$CHLA,
+                            SST=bassn$SST,
+                            Depth=bassn$Depth,
+                            d50.b=bassn$d50.b,
+                            time=bassn$time,
+                            Season=bassn$Season,
+                            Seasonb=bassn$Seasonb,
+                            Year=bassn$Year),FUN= "sum")
 
 colnames(bassd)[12] <- "freq"
 bassd$Year<-as.factor(bassd$Year)
@@ -271,193 +249,170 @@ bassd2<-bassda[!duplicated(bassda),]
 #
 bassd2 <- bassd2[with(bassd2,order(time,Site)),]
 
-# NEW ATTEMPT
-Qb2 <- bassd2[c(14:43)]
-lagb <- ncol(Qb2)-1
-Lb2 <- matrix(0:lagb,nrow(Qb2),ncol(Qb2),byrow=TRUE) ## define lag
-Qb2 <- as.matrix(Qb2)
+# Converted to list, as for sturgeon, above   -MOB 20200729
+bassd_list <- as.list(bassd2[, 1:12])
+bassd_list[['Qb2']] <- as.matrix(bassd2[c(13:42)])
+bassd_list[['Lb2']] <- matrix(0:(ncol(bassd_list$Qb2) - 1),
+                              nrow(bassd_list$Qb2),
+                              ncol(bassd_list$Qb2),
+                              byrow = TRUE)
+
 
 ts.start <- proc.time()
 # Log transform
-bassd2$CHLA<-(log(bassd2$CHLA))
+bassd_list$CHLA <- log(bassd_list$CHLA)
 
-BM1 <- gam(freq~s(Qb2,Lb2,bs="cb",k=10)+s(Site, bs = 're')+
+# Site to factor, as for sturgeon, above    -MOB 20200729
+bassd_list$Site <- as.factor(bassd_list$Site)
+
+
+forms <- c("freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
              s(Year, bs = 're')+
              s(CHLA,bs='tp')+
-             s(DOY,bs="cs",k=6)+
+             s(DOY,bs='cs',k=6)+
              s(Depth,bs='tp')+
-             offset(log(d50.b)),
-           data=bassd2,family=ziP,method="REML")
-
-BM2 <- gam(freq~s(Qb2,Lb2,bs="cb",k=10)+s(Site, bs = 're')+
+             offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
              s(Year, bs = 're')+
              s(CHLA,bs='tp')+
-             s(DOY,bs="cs",k=6)+
-             offset(log(d50.b)),
-           data=bassd2,family=ziP,method="REML")
-
-BM3 <- gam(freq~s(Qb2,Lb2,bs="cb",k=10)+s(Site, bs = 're')+
+             s(DOY,bs='cs',k=6)+
+             offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
              s(Year, bs = 're')+
              s(CHLA,bs='tp')+
              s(Depth,bs='tp')+
-             offset(log(d50.b)),
-           data=bassd2,family=ziP,method="REML")
-
-BM4 <- gam(freq~s(Qb2,Lb2,bs="cb",k=10)+s(Site, bs = 're')+
+             offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
              s(Year, bs = 're')+
-             s(DOY,bs="cs",k=6)+
+             s(DOY,bs='cs',k=6)+
              s(Depth,bs='tp')+
-             offset(log(d50.b)),
-           data=bassd2,family=ziP,method="REML")
-
-BM5 <- gam(freq~s(Site, bs = 're')+
+             offset(log(d50.b))",
+           "freq~s(Site, bs = 're')+
              s(Year, bs = 're')+
              s(CHLA,bs='tp')+
-             s(DOY,bs="cs",k=6)+
+             s(DOY,bs='cs',k=6)+
              s(Depth,bs='tp')+
-             offset(log(d50.b)),
-           data=bassd2,family=ziP,method="REML")
-
-BM6 <- gam(freq~s(Qb2,Lb2,bs="cb",k=10)+s(Site, bs = 're')+
+             offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
              s(Year, bs = 're')+
              s(CHLA,bs='tp')+
-             t2(DOY,Depth,bs=c("cp", "tp"),k=6)+
-             offset(log(d50.b)),
-           data=bassd2,family=ziP,method="REML")
-
-BM7 <- gam(freq~s(Qb2,Lb2,bs="cb",k=10)+s(Site, bs = 're')+
+             t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
+             offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
              s(Year, bs = 're')+
-             t2(DOY,Depth,bs=c("cp", "tp"),k=6)+
-             offset(log(d50.b)),
-           data=bassd2,family=ziP,method="REML")
-
-BM8 <- gam(freq~s(Site, bs = 're')+
+             t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
+             offset(log(d50.b))",
+           "freq~s(Site, bs = 're')+
              s(Year, bs = 're')+
              s(CHLA,bs='tp')+
-             t2(DOY,Depth,bs=c("cp", "tp"),k=6)+
-             offset(log(d50.b)),
-           data=bassd2,family=ziP,method="REML")
-
-BM9 <- gam(freq~s(Site, bs = 're')+
+             t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
+             offset(log(d50.b))",
+           "freq~s(Site, bs = 're')+
              s(Year, bs = 're')+
-             t2(DOY,Depth,bs=c("cp", "tp"),k=6)+
-             offset(log(d50.b)),
-           data=bassd2,family=ziP,method="REML")
-
-BM10 <- gam(freq~s(Qb2,Lb2,bs="cb",k=10)+s(Site, bs = 're')+
+             t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
+             offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(Depth,bs='tp')+
-              t2(DOY,CHLA,bs=c("cp", "tp"),k=6)+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
-
-BM11 <- gam(freq~s(Qb2,Lb2,bs="cb",k=10)+s(Site, bs = 're')+
+              t2(DOY,CHLA,bs=c('cp', 'tp'),k=6)+
+              offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              t2(DOY,CHLA,bs=c("cp", "tp"),k=6)+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
-
-BM12 <- gam(freq~s(Site, bs = 're')+
+              t2(DOY,CHLA,bs=c('cp', 'tp'),k=6)+
+              offset(log(d50.b))",
+           "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(Depth,bs='tp')+
-              t2(DOY,CHLA,bs=c("cp", "tp"),k=6)+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
-
-BM13 <- gam(freq~s(Site, bs = 're')+
+              t2(DOY,CHLA,bs=c('cp', 'tp'),k=6)+
+              offset(log(d50.b))",
+           "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              t2(DOY,CHLA,bs=c("cp", "tp"),k=6)+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
-
-BM14 <- gam(freq~s(Qb2,Lb2,bs="cb",k=10)+s(Site, bs = 're')+
+              t2(DOY,CHLA,bs=c('cp', 'tp'),k=6)+
+              offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(DOY,bs="cs",k=6)+
-              t2(Depth,CHLA,bs=c("tp", "tp"),k=6)+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
-
-BM15 <- gam(freq~s(Qb2,Lb2,bs="cb",k=10)+s(Site, bs = 're')+
+              s(DOY,bs='cs',k=6)+
+              t2(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
+              offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              t2(Depth,CHLA,bs=c("tp", "tp"),k=6)+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
-
-BM16 <- gam(freq~s(Site, bs = 're')+
+              t2(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
+              offset(log(d50.b))",
+           "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(DOY,bs="cs",k=6)+
-              t2(Depth,CHLA,bs=c("tp", "tp"),k=6)+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
-
-BM17 <- gam(freq~s(Site, bs = 're')+
+              s(DOY,bs='cs',k=6)+
+              t2(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
+              offset(log(d50.b))",
+           "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              t2(Depth,CHLA,bs=c("tp", "tp"),k=6)+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
-
-BM18 <- gam(freq~s(Qb2,Lb2,bs="cb",k=10)+s(Site, bs = 're')+
+              t2(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
+              offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(DOY,bs="cs",k=6)+
+              s(DOY,bs='cs',k=6)+
               s(Depth,bs='tp')+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
-
-BM19 <- gam(freq~s(Site, bs = 're')+
+              offset(log(d50.b))",
+           "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(DOY,bs="cs",k=6)+
+              s(DOY,bs='cs',k=6)+
               s(Depth,bs='tp')+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
-
-BM20 <- gam(freq~s(Qb2,Lb2,bs="cb",k=10)+s(Site, bs = 're')+
+              offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              t2(DOY,Depth,bs=c("cp", "tp"),k=6)+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
-
-BM21 <- gam(freq~s(Qb2,Lb2,bs="cb",k=10)+s(Site, bs = 're')+
+              t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
+              offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(CHLA,bs='tp')+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
-
-BM22 <- gam(freq~s(Site, bs = 're')+
+              offset(log(d50.b))",
+           "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(CHLA,bs='tp')+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
-
-BM23 <- gam(freq~s(Qb2,Lb2,bs="cb",k=10)+s(Site, bs = 're')+
+              offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(DOY,bs="cs",k=6)+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
-
-BM24 <- gam(freq~s(Site, bs = 're')+
+              s(DOY,bs='cs',k=6)+
+              offset(log(d50.b))",
+           "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(DOY,bs="cs",k=6)+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
-
-BM25 <- gam(freq~s(Qb2,Lb2,bs="cb",k=10)+s(Site, bs = 're')+
+              s(DOY,bs='cs',k=6)+
+              offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(Depth,bs='tp')+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
-
-BM26 <- gam(freq~s(Site, bs = 're')+
+              offset(log(d50.b))",
+           "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(Depth,bs='tp')+
-              offset(log(d50.b)),
-            data=bassd2,family=ziP,method="REML")
+              offset(log(d50.b))")
 
-AIC(BM1,BM2,BM3,BM4,BM5,BM6,BM7,BM8,BM9,BM10,
-    BM11,BM12,BM13,BM14,BM15,BM16,BM17,BM18,BM19,BM20,
-    BM21,BM22,BM23,BM24,BM25,BM26)
+# remove the carriage returns
+forms <- gsub('\n', ' ', forms)
 
-summary(BM6)
-summary(BM7)
-summary(BM11)
-summary(BM10)
-summary(BM14)
+
+library(parallel)
+cl <- detectCores(logical = F) - 1
+cl <- makeCluster(cl)
+clusterEvalQ(cl, list(library(dlnm), library(mgcv)))
+clusterExport(cl, 'bassd_list')
+
+sb_models <- parLapply(cl,
+                       forms,
+                       function(.){
+                         gam(formula = as.formula(.),
+                             data = bassd_list,
+                             family = ziP,
+                             method = 'REML')
+                       })
+stopCluster(cl)
+
+names(sb_models) <-  paste0('SM', 24:26)
+# saveRDS(sb_models, 'sb_lag_models.RDS')
+
+summary(sb_models$SM1)
+
+ic <- data.frame(AIC = sapply(sb_models, AIC))
+ic$dAIC <- ic$AIC - min(ic$AIC)
+ic <- ic[order(ic$dAIC),]
+
+##
