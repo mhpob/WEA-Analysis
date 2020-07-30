@@ -1,9 +1,9 @@
-## Added line to load packages      -MOB 20200729
+## Added line to load packages      -MOB
 library(dplyr); library(dlnm); library(mgcv)
 
 ## I edited the column name of "Day" in sturg_full.csv directly before loading in,
-##    as the column had wound up called "Day.x".    -MOB 20200729
-sturgn<-read.csv("dlnm/Sturg_full.csv",header=T)
+##    as the column had wound up called "Day.x".    -MOB
+sturgn<-read.csv("dlnm/data/Sturg_full.csv",header=T)
 sturgn <- subset(sturgn,select=-c(1))
 
 sturgn[,2]<-as.POSIXct(sturgn[,2],format="%Y-%m-%d")
@@ -24,9 +24,9 @@ sturgd<- aggregate(sturgn$freq,
 colnames(sturgd)[12] <- "freq"
 sturgd$Year<-as.factor(sturgd$Year)
 
-Lags<-read.csv("dlnm/AllLags.csv",header=T)
+Lags<-read.csv("dlnm/data/AllLags.csv",header=T)
 
-## Also removing SST column -- it's redundant after the join. -- MOB 20200729
+## Also removing SST column -- it's redundant after the join. -- MOB
 Lags <- subset(Lags,select=-c(1, 4))
 
 Lags[,2]<-as.POSIXct(Lags[,2],format="%Y-%m-%d")
@@ -35,11 +35,12 @@ sturgda<-left_join(sturgd, Lags, by=c("Day","Site"))
 sturgd2<-sturgda[!duplicated(sturgda),]
 #
 sturgd2 <- sturgd2[with(sturgd2,order(time,Site)),]
+# write.csv(sturgd2, 'dlnm/sturg_w_lags.csv', row.names = F)
 
 
 ## For visualization and cross-validation later, we need to have all the data
 ##    saved in a list rather than a data.frame + 2 matrices (Q & L)
-##    -MOB 20200729
+##    -MOB
 sturgd_list <- as.list(sturgd2[, 1:12])
 sturgd_list[['Qs2']] <- as.matrix(sturgd2[c(13:42)])
 sturgd_list[['Ls2']] <- matrix(0:(ncol(sturgd_list$Qs2) - 1),
@@ -185,7 +186,7 @@ forms <- c("freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
 forms <- gsub('\n', ' ', forms)
 
 
-# Set up cluster    -MOB
+# Set up cluster
 library(parallel)
 cl <- detectCores(logical = F) - 1
 cl <- makeCluster(cl)
@@ -193,7 +194,7 @@ clusterEvalQ(cl, list(library(dlnm), library(mgcv)))
 clusterExport(cl, 'sturgd_list')
 
 
-# Fit models  -MOB
+# Fit models
 as_models <- parLapply(cl,
                        forms,
                        function(.){
@@ -212,9 +213,9 @@ names(as_models) <- paste0('SM', 1:26)
 
 summary(as_models$SM1)
 
-ic <- data.frame(AIC = sapply(as_models, AIC))
-ic$dAIC <- ic$AIC - min(ic$AIC)
-ic <- ic[order(ic$dAIC),]
+s_ic <- data.frame(AIC = sapply(as_models, AIC))
+s_ic$dAIC <- s_ic$AIC - min(s_ic$AIC)
+s_ic <- s_ic[order(s_ic$dAIC),]
 
 
 ## SM6 and SM7 seem to be equally-likely candidates.
@@ -223,7 +224,7 @@ ic <- ic[order(ic$dAIC),]
 
 
 ## Now for striped bass
-bassn<-read.csv("dlnm/Bass_full.csv",header=T)
+bassn<-read.csv("dlnm/data/Bass_full.csv",header=T)
 bassn <- subset(bassn,select=-c(1))
 
 bassn[,2]<-as.POSIXct(bassn[,2],format="%Y-%m-%d")
@@ -248,8 +249,11 @@ bassda<-left_join(bassd, Lags, by=c("Day","Site"))
 bassd2<-bassda[!duplicated(bassda),]
 #
 bassd2 <- bassd2[with(bassd2,order(time,Site)),]
+# write.csv(bassd2, 'dlnm/data/bass_w_lags.csv', row.names = F)
 
-# Converted to list, as for sturgeon, above   -MOB 20200729
+
+
+# Converted to list, as for sturgeon, above   -MOB
 bassd_list <- as.list(bassd2[, 1:12])
 bassd_list[['Qb2']] <- as.matrix(bassd2[c(13:42)])
 bassd_list[['Lb2']] <- matrix(0:(ncol(bassd_list$Qb2) - 1),
@@ -262,7 +266,7 @@ ts.start <- proc.time()
 # Log transform
 bassd_list$CHLA <- log(bassd_list$CHLA)
 
-# Site to factor, as for sturgeon, above    -MOB 20200729
+# Site to factor, as for sturgeon, above    -MOB
 bassd_list$Site <- as.factor(bassd_list$Site)
 
 
@@ -399,20 +403,30 @@ clusterExport(cl, 'bassd_list')
 sb_models <- parLapply(cl,
                        forms,
                        function(.){
-                         gam(formula = as.formula(.),
-                             data = bassd_list,
-                             family = ziP,
-                             method = 'REML')
+                         # One of the models doesn't want to converge, so using
+                         # tryCatach to make it save the error and move on rather
+                         # than killing the whole process.     -MOB
+                         tryCatch({
+                           gam(formula = as.formula(.),
+                               data = bassd_list,
+                               family = ziP,
+                               method = 'REML')
+                         }, error = function(e) return(paste('Error in', as.formula(.))))
                        })
 stopCluster(cl)
 
-names(sb_models) <-  paste0('SM', 24:26)
-# saveRDS(sb_models, 'sb_lag_models.RDS')
+names(sb_models) <-  paste0('BM', 1:26)
 
-summary(sb_models$SM1)
+# saveRDS(sb_models, 'dlnm/sb_lag_models.RDS')
 
-ic <- data.frame(AIC = sapply(sb_models, AIC))
-ic$dAIC <- ic$AIC - min(ic$AIC)
-ic <- ic[order(ic$dAIC),]
+summary(sb_models$BM1)
+
+b_ic <- data.frame(AIC = sapply(sb_models, function(.){
+  tryCatch(AIC(.),
+           error = function(e) NA)}
+))
+
+b_ic$dAIC <- b_ic$AIC - min(b_ic$AIC, na.rm = T)
+b_ic <- b_ic[order(b_ic$dAIC),]
 
 ##
