@@ -17,18 +17,42 @@ cv <- function(data, model, k, repeats = 1, seed = NULL){
                   formula = model$formula,
                   family = model$family$family)
 
+    train_data$pred <- predict(CV_mod, type = 'response')
+
 
     # Test the model
-    pred <- predict(CV_mod, test_data, type = "response")
+    test_data$pred <- predict(CV_mod, test_data, type = "response")
+
+
 
     # Penalty functions
-    # RMSE of test > RMSE of train => OVER FITTING of the data.
-    # RMSE of test < RMSE of train => UNDER FITTING of the data.
-    rmse_train <- sqrt(mean((CV_mod$y - CV_mod$fitted.values) ^ 2))
-    rmse_test <- sqrt(mean((
-      (test_data$success / (test_data$success + test_data$fail)) - pred) ^ 2))
+    ## Overall RMSE
+    train_overall <- sqrt(mean((train_data$freq - train_data$pred) ^ 2))
+    test_overall <- sqrt(mean((test_data$freq - test_data$pred) ^ 2))
 
-    c(rmse_train = rmse_train, rmse_test = rmse_test)
+    ## 0m RMSE
+    train_0 <- sqrt(mean((train_data$freq[train_data$distance == 0] -
+                            train_data$pred[train_data$distance == 0]) ^ 2))
+    test_0 <- sqrt(mean((test_data$freq[test_data$distance == 0] -
+                           test_data$pred[test_data$distance == 0]) ^ 2))
+
+    ## 550m RMSE
+    train_550 <- sqrt(mean((train_data$freq[train_data$distance == 550] -
+                              train_data$pred[train_data$distance == 550]) ^ 2))
+    test_550 <- sqrt(mean((test_data$freq[test_data$distance == 550] -
+                             test_data$pred[test_data$distance == 550]) ^ 2))
+
+    ## 800m RMSE
+    train_800 <- sqrt(mean((train_data$freq[train_data$distance == 800] -
+                              train_data$pred[train_data$distance == 800]) ^ 2))
+    test_800 <- sqrt(mean((test_data$freq[test_data$distance == 800] -
+                             test_data$pred[test_data$distance == 800]) ^ 2))
+
+    c(train_overall = train_overall, test_overall = test_overall,
+      train_0 = train_0, test_0 = test_0,
+      train_550 = train_550, test_550 = test_550,
+      train_800 = train_800, test_800 = test_800)
+
   }
 
 
@@ -68,6 +92,7 @@ cv <- function(data, model, k, repeats = 1, seed = NULL){
 data <- readRDS('data and imports/rangetest_logit_binary_pt0.RDS')
 names(data) <- gsub(' ', '_', tolower(names(data)))
 data$array <- as.factor(gsub(' ', '', data$array))
+data$freq <- data$success / (data$success + data$fail)
 
 
 
@@ -81,18 +106,18 @@ mod_d <- gam(cbind(success, fail) ~
              method = 'REML',
              control = gam.control(nthreads = 4))
 
-
+AIC(mod_d)
 ##  5-fold cross-validation
 kf_d <- cv(data, mod_d, k = 5, repeats = 5)
-mean(kf_d['rmse_test',])
-
+colMeans(kf_d[, grepl('test', names(kf_d))]) * 100
+apply(kf_d[, grepl('test', names(kf_d))], 2, sd) * 100
 
 
 # ~ Distance + s(noise) ----
 ## Nonlinear response to noise
 mod_dn <- gam(cbind(success, fail) ~
                 distance +
-                s(average_noise, k = 6, bs = 'tp') +
+                s(average_noise) +
                 s(array, bs = 're'),
               family = binomial(),
               data = data,
@@ -102,7 +127,8 @@ mod_dn <- gam(cbind(success, fail) ~
 
 ##  5-fold cross-validation
 kf_dn <- cv(data, mod_dn, k = 5, repeats = 5)
-mean(kf_dn['rmse_test',])
+colMeans(kf_dn[, grepl('test', names(kf_dn))]) * 100
+apply(kf_dn[, grepl('test', names(kf_dn))], 2, sd) * 100
 
 
 
@@ -110,8 +136,8 @@ mean(kf_dn['rmse_test',])
 ## Nonlinear response to noise and stratification
 mod_dndt <- gam(cbind(success, fail) ~
                   distance +
-                  s(average_noise, k = 6, bs = 'tp') +
-                  s(dt, k = 6, bs = 'tp') +
+                  s(average_noise) +
+                  s(dt) +
                   s(array, bs = 're'),
                 family = binomial(),
                 data = data,
@@ -121,17 +147,16 @@ mod_dndt <- gam(cbind(success, fail) ~
 
 ##  5-fold cross-validation
 kf_dndt <- cv(data, mod_dndt, k = 5, repeats = 5)
-mean(kf_dndt['rmse_test',])
+colMeans(kf_dndt[, grepl('test', names(kf_dndt))]) * 100
+apply(kf_dndt[, grepl('test', names(kf_dndt))], 2, sd) * 100
 
 
 
-# ~ Distance + s(noise) + s(dt) + te(noise, dt)----
+# ~ Distance + te(noise, dt)----
 ## Nonlinear response to noise, modulated by stratification
 mod_dndt_int <- gam(cbind(success, fail) ~
                       distance +
-                      s(average_noise, k = 6, bs = 'tp') +
-                      s(dt, k = 6, bs = 'tp') +
-                      te(average_noise, dt, bs = 'tp') +
+                      te(average_noise, dt) +
                       s(array, bs = 're'),
                     family = binomial(),
                     data = data,
@@ -141,7 +166,8 @@ mod_dndt_int <- gam(cbind(success, fail) ~
 
 ##  5-fold cross-validation
 kf_dndt_int <- cv(data, mod_dndt_int, k = 5, repeats = 5)
-mean(kf_dndt_int['rmse_test',])
+colMeans(kf_dndt_int[, grepl('test', names(kf_dndt_int))]) * 100
+apply(kf_dndt_int[, grepl('test', names(kf_dndt_int))], 2, sd) * 100
 
 
 
@@ -149,7 +175,7 @@ mean(kf_dndt_int['rmse_test',])
 ## Nonlinear response to stratification
 mod_ddt <- gam(cbind(success, fail) ~
                  distance +
-                 s(dt, k = 6, bs = 'tp') +
+                 s(dt) +
                  s(array, bs = 're'),
                family = binomial(),
                data = data,
@@ -159,16 +185,16 @@ mod_ddt <- gam(cbind(success, fail) ~
 
 ##  5-fold cross-validation
 kf_ddt <- cv(data, mod_ddt, k = 5, repeats = 5)
-mean(kf_ddt['rmse_test',])
-
+colMeans(kf_ddt[, grepl('test', names(kf_ddt))]) * 100
+apply(kf_ddt[, grepl('test', names(kf_ddt))], 2, sd) * 100
 
 
 # ~ Distance + s(noise) + s(bwt) ----
 ## Nonlinear response to noise and near-receiver temperature
 mod_dnbt <- gam(cbind(success, fail) ~
                   distance +
-                  s(average_noise, k = 6, bs = 'tp') +
-                  s(average_temperature, k = 6, bs = 'tp') +
+                  s(average_noise) +
+                  s(average_temperature) +
                   s(array, bs = 're'),
                 family = binomial(),
                 data = data,
@@ -178,17 +204,16 @@ mod_dnbt <- gam(cbind(success, fail) ~
 
 ##  5-fold cross-validation
 kf_dnbt <- cv(data, mod_dnbt, k = 5, repeats = 5)
-mean(kf_dnbt['rmse_test',])
+colMeans(kf_dnbt[, grepl('test', names(kf_dnbt))]) * 100
+apply(kf_dnbt[, grepl('test', names(kf_dnbt))], 2, sd) * 100
 
 
 
-# ~ Distance + s(noise) + s(bwt) + te(noise, bwt)----
+# ~ Distance + te(noise, bwt)----
 ## Nonlinear response to noise, modulated by near-receiver temperature
 mod_dnbt_int <- gam(cbind(success, fail) ~
                       distance +
-                      s(average_noise, k = 6, bs = 'tp') +
-                      s(average_temperature, k = 6, bs = 'tp') +
-                      te(average_noise, average_temperature, bs = 'tp') +
+                      te(average_noise, average_temperature) +
                       s(array, bs = 're'),
                     family = binomial(),
                     data = data,
@@ -198,7 +223,8 @@ mod_dnbt_int <- gam(cbind(success, fail) ~
 
 ##  5-fold cross-validation
 kf_dnbt_int <- cv(data, mod_dnbt_int, k = 5, repeats = 5)
-mean(kf_dnbt_int['rmse_test',])
+colMeans(kf_dnbt_int[, grepl('test', names(kf_dnbt_int))]) * 100
+apply(kf_dnbt_int[, grepl('test', names(kf_dnbt_int))], 2, sd) * 100
 
 
 
@@ -206,7 +232,7 @@ mean(kf_dnbt_int['rmse_test',])
 ## Nonlinear response to near-receiver temperature
 mod_dbt <- gam(cbind(success, fail) ~
                  distance +
-                 s(average_temperature, k = 6, bs = 'tp') +
+                 s(average_temperature) +
                  s(array, bs = 're'),
                family = binomial(),
                data = data,
@@ -216,4 +242,14 @@ mod_dbt <- gam(cbind(success, fail) ~
 
 ##  5-fold cross-validation
 kf_dbt <- cv(data, mod_dbt, k = 5, repeats = 5)
-mean(kf_dbt['rmse_test',])
+colMeans(kf_dbt[, grepl('test', names(kf_dbt))]) * 100
+apply(kf_dbt[, grepl('test', names(kf_dbt))], 2, sd) * 100
+
+
+
+
+ic <- AIC(mod_d, mod_dn, mod_dndt, mod_dndt_int,
+          mod_ddt, mod_dnbt, mod_dnbt_int, mod_dbt)
+ic$dAIC <- ic$AIC - min(ic$AIC)
+ic <- ic[order(ic$dAIC),]
+ic
