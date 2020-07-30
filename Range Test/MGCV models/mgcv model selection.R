@@ -18,11 +18,12 @@ cv <- function(data, model, k, repeats = 1, seed = NULL){
                   family = model$family$family)
 
     train_data$pred <- predict(CV_mod, type = 'response')
+    train_data <- train_data[!train_data$distance %in% c(0, 2400),]
 
 
     # Test the model
     test_data$pred <- predict(CV_mod, test_data, type = "response")
-
+    test_data <- test_data[!test_data$distance %in% c(0, 2400),]
 
 
     # Penalty functions
@@ -30,11 +31,11 @@ cv <- function(data, model, k, repeats = 1, seed = NULL){
     train_overall <- sqrt(mean((train_data$freq - train_data$pred) ^ 2))
     test_overall <- sqrt(mean((test_data$freq - test_data$pred) ^ 2))
 
-    ## 0m RMSE
-    train_0 <- sqrt(mean((train_data$freq[train_data$distance == 0] -
-                            train_data$pred[train_data$distance == 0]) ^ 2))
-    test_0 <- sqrt(mean((test_data$freq[test_data$distance == 0] -
-                           test_data$pred[test_data$distance == 0]) ^ 2))
+    ## 250m RMSE
+    train_250 <- sqrt(mean((train_data$freq[train_data$distance == 250] -
+                            train_data$pred[train_data$distance == 250]) ^ 2))
+    test_250 <- sqrt(mean((test_data$freq[test_data$distance == 250] -
+                           test_data$pred[test_data$distance == 250]) ^ 2))
 
     ## 550m RMSE
     train_550 <- sqrt(mean((train_data$freq[train_data$distance == 550] -
@@ -49,7 +50,7 @@ cv <- function(data, model, k, repeats = 1, seed = NULL){
                              test_data$pred[test_data$distance == 800]) ^ 2))
 
     c(train_overall = train_overall, test_overall = test_overall,
-      train_0 = train_0, test_0 = test_0,
+      train_250 = train_250, test_250 = test_250,
       train_550 = train_550, test_550 = test_550,
       train_800 = train_800, test_800 = test_800)
 
@@ -93,7 +94,7 @@ data <- readRDS('data and imports/rangetest_logit_binary_pt0.RDS')
 names(data) <- gsub(' ', '_', tolower(names(data)))
 data$array <- as.factor(gsub(' ', '', data$array))
 data$freq <- data$success / (data$success + data$fail)
-
+data <- data[data$distance > 0,]
 
 
 # ~ Distance ----
@@ -247,7 +248,7 @@ apply(kf_dbt[, grepl('test', names(kf_dbt))], 2, sd) * 100
 
 
 
-
+# AIC comparison ---
 ic <- AIC(mod_d, mod_dn, mod_dndt, mod_dndt_int,
           mod_ddt, mod_dnbt, mod_dnbt_int, mod_dbt)
 ic$dAIC <- ic$AIC - min(ic$AIC)
