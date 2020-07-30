@@ -1,0 +1,326 @@
+---
+title: "Species abundance cross validation"
+author: "Mike O'Brien"
+date: "7/30/2020"
+output:
+  pdf_document: default
+  # html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# knitr::opts_knit$set(root.dir = 'c:/users/darpa2/analysis/wea-analysis/dlnm')
+knitr::opts_knit$set(root.dir = 'p:/obrien/biotelemetry/md wea habitat/wea-analysis/dlnm')
+```
+
+## Packages
+```{r}
+library(parallel); library(dlnm); library(mgcv); library(dplyr)
+```
+
+## Custom functions
+```{r}
+cv <- function(data, model, k, repeats = 1, cl = NULL){
+  create_input_data <- function(model_data){
+    data_list <- as.list(model_data[, !grepl('SST.', names(model_data))])
+    
+    Q_species <- grep('^Q', names(model$var.summary), value = T)
+    L_species <- grep('^L', names(model$var.summary), value = T)
+    
+    if(length(Q_species) == 1){
+      # Set up SST lag matrix, and assign to an element of the list
+      data_list[[Q_species]] <- 
+        as.matrix(
+          subset(model_data, select = grep('SST.', names(model_data), value = T))
+        )
+      
+      # Define lags, and assign to an element of the list
+      data_list[[L_species]] <- 
+        matrix(0:(ncol(data_list[[Q_species]]) - 1),
+               nrow(data_list[[Q_species]]),
+               ncol(data_list[[Q_species]]),
+               byrow = TRUE)
+    }
+    
+    data_list
+  }
+  
+  refit <- function(i, data_shuffle, folds){
+    # Segment data by fold using the which() function
+    test_ids <- which(folds == i, arr.ind = TRUE)
+    test_data <- data_shuffle[test_ids, ]
+    train_data <- data_shuffle[-test_ids, ]
+    
+    
+    # Train the model
+    train_data <- create_input_data(train_data)
+    
+    CV_mod <- gam(data = train_data,
+                  formula = model$formula,
+                  family = ziP,
+                  method = 'REML')
+    
+    train_data$pred <- predict(CV_mod, type = 'response')
+    
+    
+    # Test the model
+    test_data <- create_input_data(test_data)
+    test_data$pred <- predict(CV_mod, test_data, type = "response")
+    
+    
+    
+    # Penalty functions
+    ## Overall RMSE
+    train_overall <- sqrt(mean((train_data$freq - train_data$pred) ^ 2))
+    test_overall <- sqrt(mean((test_data$freq - test_data$pred) ^ 2))
+    
+    ## Zero-only RMSE
+    train_0 <- sqrt(mean((train_data$freq[train_data$freq == 0] -
+                            train_data$pred[train_data$freq == 0]) ^ 2))
+    test_0 <- sqrt(mean((test_data$freq[test_data$freq == 0] -
+                           test_data$pred[test_data$freq == 0]) ^ 2))
+    
+    ## Greater-than-zero RMSE
+    train_gt0 <- sqrt(mean((train_data$freq[train_data$freq != 0] -
+                              train_data$pred[train_data$freq != 0]) ^ 2))
+    test_gt0 <- sqrt(mean((test_data$freq[test_data$freq != 0] -
+                             test_data$pred[test_data$freq != 0]) ^ 2))
+    
+    
+    c(train_overall = train_overall, test_overall = test_overall,
+      train_0 = train_0, test_0 = test_0,
+      train_gt0 = train_gt0, test_gt0 = test_gt0)
+  }
+  
+  
+  if(repeats != 1){
+    reps <- function(reps){
+      
+      data_shuffle <- data[sample(nrow(data)),]
+      folds <- cut(seq(1, nrow(data_shuffle)), breaks = k, labels = F)
+      
+      if(is.null(cl)){
+        folds <- sapply(1:k, refit, data_shuffle, folds)
+      }else{
+        clusterExport(cl, list('data_shuffle', 'folds'))
+        folds <- parSapply(cl, 1:k, refit, data_shuffle, folds)
+      }
+      
+      data.frame((t(folds)),
+                 fold = 1:k,
+                 rep = reps)
+    }
+    
+    
+    if(is.null(cl)){
+      cvs <- lapply(1:repeats, reps)
+    }else{
+      parallel::clusterEvalQ(cl, c(library(dlnm), library(mgcv)))
+      cvs <- parLapply(cl, 1:repeats, reps)
+    }
+    
+    
+    do.call(rbind, cvs)
+    
+  }else{
+    
+    data_shuffle <- data[sample(nrow(data)),]
+    folds <- cut(seq(1, nrow(data_shuffle)), breaks = k, labels = F)
+    
+    if(is.null(cl)){
+      folds <- sapply(1:k, refit, data_shuffle, folds)
+    }else{
+      clusterEvalQ(cl, c(library(dlnm), library(mgcv)))
+      # clusterExport(cl, c('data_shuffle', 'folds'))
+      folds <- parSapply(cl, 1:k, refit, data_shuffle, folds)
+    }
+    
+    data.frame((t(folds)),
+               fold = 1:k)
+    
+  }
+}
+```
+## Import data
+### Sturgeon
+```{r}
+sturg <- read.csv("data/sturg_w_lags.csv")
+sturg$CHLA <- log(sturg$CHLA)
+sturg$Site <- as.factor(sturg$Site)
+head(sturg)
+```
+
+### Striped bass
+```{r}
+sb <- read.csv("data/bass_w_lags.csv")
+sb$CHLA <- log(sb$CHLA)
+sb$Site <- as.factor(sb$Site)
+head(sb)
+```
+
+
+## Model selection
+
+The manuscript only reports the top five models for each species, so I'm only going to focus on them. Models have already been fitted, so I'm just importing them.
+
+```{r}
+sb_mods <- readRDS('sb_lag_models.rds')
+# BM3 never converged. BM18 and BM20 are the same as BM4 and BM7, respectively.
+sb_mods <- sb_mods[!names(sb_mods) %in% c('BM3', 'BM18', 'BM20')]
+
+as_mods <- readRDS('sturg_lag_models.RDS')
+#SM18 and SM20 are the same as SM4 and SM7, respectively.
+as_mods <- as_mods[!names(as_mods) %in% c('SM18', 'SM20')]
+
+
+sb_aic <- data.frame(AIC = sapply(sb_mods, AIC),
+                     model = names(sb_mods))
+as_aic <- data.frame(AIC = sapply(as_mods, AIC),
+                     model = names(as_mods))
+
+sb_aic[order(sb_aic$AIC),][1:5,]
+as_aic[order(as_aic$AIC),][1:5,]
+
+```
+
+Models 6, 7, 8, 10, and 11 are the models selected for both species.
+
+```{r}
+as_mods <- as_mods[names(as_mods) %in% paste0('SM', c(6, 7, 8, 10, 11))]
+sb_mods <- sb_mods[names(sb_mods) %in% paste0('BM', c(6, 7, 8, 10, 11))]
+```
+
+## Cross validation
+
+My current understanding (which is probably not correct!) is that a metric like AIC is reflective of how well the model parameters are fitting the data that was provided to train the model, while cross validation is reflective of predictive power on data that was not used to fit the model.
+
+So, say you're fitting a line, $y = mx + b$, and the model says that $m$ = 3 and $b$ = 10.
+
+- AIC tells you how well the number 3 for slope and the number 10 for intercept fit the data that the model was trained on, after penalizing for the number of parameters that have been used (2 parameters have been used here, there would be a greater penalty if 3 had been used, e.g.).
+- Cross validation tells you how well $x$ predicts $y$ in a philosophical sense, since you're using different data for each validation run (fold), and they're going to give you different values for $m$ and $b$.
+
+You can use a whole bunch of different metrics to give you an idea of how far the model is off from the "real" values. One of the most common is root mean square error (RMSE) averaged over each of the cross validation folds, as it is in units of the response variable. So, if we're modeling the number of fish and the mean RMSE after 10-fold cross validation is 3, we can say that the model, on average, predicts a number that is 3 fish away from the true value.
+
+When I ran this the first time on our models, the overall RMSE for the models seemed impressively low -- near 0.3 for Atlantic sturgeon. Since the RMSE is on the same scale as the response, they're only off by 1/3 of an individual on average! That's crazy good!
+
+```{r}
+as_kfcv <- readRDS('data/sturgeon_5fcv.rds')
+sb_kfcv <- readRDS('data/bass_5fcv.rds')
+as_kfcv$kf_SM6[, c(1,2,7)]
+```
+
+However, in this instance, I think we need to remember that we are modeling the number of fish using a zero-inflated Poisson distribution. This means that we have a zero-inflated part of the data, whose probability is modeled as 1-$p$, and a non-zero part of the data, whose probablility is modeled by a truncated Poisson probability function. There is other information on this in the [mgcv::ziP help documentation](https://stat.ethz.ch/R-manual/R-patched/library/mgcv/html/ziP.html). Because of this, I feel it makes more sense to look at how well the model performs at predicting zeroes and counts greater than zero, as well as its overall performance. Since there are so many observations of 0, the error in predicting zeroes will far outweigh the error in predicting numbers greater than zero. 
+
+We can also use the cross validation results to say something about model fit:
+
+- RMSE of the test set > RMSE of the train set $\rightarrow$ **over-fitting** of the data.
+- RMSE of the test set < RMSE of the train set $\rightarrow$ **under-fitting** of the data.
+
+So, going forward, you'll see zero-only, greater-than-zero, and overall model RMSEs reported for both the training and the testing data.
+
+
+
+### Atlantic sturgeon
+
+The best models, in order, were 6, 7, 8, 10, and 11 for Atlantic sturgeon. Calculate 5-fold cross validation in parallel. This is not run here, as it takes too long -- the saved output was imported above.
+```{r, eval=FALSE}
+# Create cluster to run models in parallel
+parallel_cluster <- makeCluster(detectCores(logical = F) - 1)
+clusterExport(parallel_cluster, 'as_mods')
+
+# Perform 5-fold cross validation in parallel
+kf_SM6 <- cv(sturg, as_mods$SM6, 5, cl = parallel_cluster)
+kf_SM7 <- cv(sturg, as_mods$SM7, 5, cl = parallel_cluster)
+kf_SM8 <- cv(sturg, as_mods$SM8, 5, cl = parallel_cluster)
+kf_SM10 <- cv(sturg, as_mods$SM10, 5, cl = parallel_cluster)
+kf_SM11 <- cv(sturg, as_mods$SM11, 5, cl = parallel_cluster)
+
+
+# Close cluster
+stopCluster(parallel_cluster)
+
+as_kfcv <- list(kf_SM6 = kf_SM6,
+                kf_SM7 = kf_SM7,
+                kf_SM8 = kf_SM8,
+                kf_SM10 = kf_SM10,
+                kf_SM11 = kf_SM11)
+
+saveRDS(as_kfcv, 'data/sturgeon_5fcv.rds')
+
+```
+
+Produce mean RMSE and standard deviation of the RMSE for the predictions.
+
+```{r}
+# RMSE mean
+t(sapply(as_kfcv, function(.) colMeans(.[,1:6])))
+
+# RMSE SD
+t(sapply(as_kfcv, function(.) apply(.[, 1:6], 2, sd)))
+```
+
+
+#### RMSE interpretation
+1. When predicting true 0 counts, the models tended to overestimate by 0.13 individuals, or 13.4-13.6%. When predicting incidence, the models were off by 1.14-1.16 individuals, or 22.8-23.2% of the maximum value of incidence (max = 5).
+
+
+2. The RMSE of the test set tends to be a little bit larger than the training set, which indicates some over-fitting, but they're within a respective standard deviation of one another. I'm guessing that this means we can say the models aren't appreciably over- or under-fitting new data.
+
+3. SM6 ($\sim SSTlag + log(CHLA) + DOY:Depth$) and SM7 ($\sim SSTlag + DOY:Depth$) were roughly equivalent according to AIC ($\Delta$AIC < 2). While SM6 had the lowest AIC, SM7 seems to forecast slightly, though not necessarily significantly, better; all RMSE metrics for the test set are lower for SM7 than SM6. Additionally, SM6 had the highest error of any of the top 5 AIC models when attempting to predict true zeroes.
+
+So, it seems that SM6 and SM7 are more-or-less equivalent across metrics; SM6 is non-significantly better according to AIC, and SM7 is non-significantly better according to RMSE. However, SM6 has an extra term ($log(CHLA)$) and performs worse at predicting zeroes than the next 4 models, at least. To me, this suggests that the GAM is attempting to use $log(CHLA)$ to fill in some gaps when sturgeon are present, but that it just winds up chasing noise. The smooth for $log(CHLA)$ is also not significant at the $\alpha$ = 0.05 level (p = 0.0629), and, in the GAMmy world, smooths tend to come out as *extremely* significant unless they're not doing much.
+
+While the best approach would be to review both models, there may be an argument here for selecting SM7 as the "best" according to parsimony and forecasting strength if we need to save time/space.
+
+
+### Striped bass
+
+The best models, in order, were 6, 7, 11, 10, and 8 for striped bass; note that models 10 ad 11 were roughly-equivalent according to AIC. Calculate 5-fold cross validation in parallel. This is not run here, as it takes too long -- the saved output was imported above.
+
+```{r, eval=FALSE}
+# Create cluster to run models in parallel
+parallel_cluster <- makeCluster(detectCores(logical = F) - 1)
+clusterExport(parallel_cluster, 'sb_mods')
+
+# Perform 5-fold cross validation in parallel
+kf_BM6 <- cv(sb, sb_mods$BM6, 5, cl = parallel_cluster)
+kf_BM7 <- cv(sb, sb_mods$BM7, 5, cl = parallel_cluster)
+kf_BM11 <- cv(sb, sb_mods$BM11, 5, cl = parallel_cluster)
+kf_BM10 <- cv(sb, sb_mods$BM10, 5, cl = parallel_cluster)
+kf_BM8 <- cv(sb, sb_mods$BM8, 5, cl = parallel_cluster)
+
+
+
+# Close cluster
+stopCluster(parallel_cluster)
+
+sb_kfcv <- list(kf_BM6 = kf_BM6,
+                kf_BM7 = kf_BM7,
+                kf_BM11 = kf_BM11,
+                kf_BM10 = kf_BM10,
+                kf_BM8 = kf_BM8)
+
+saveRDS(sb_kfcv, 'data/bass_5fcv.rds')
+
+```
+
+Produce mean RMSE and Standard deviation of the RMSE for the predictions.
+
+```{r}
+# RMSE mean
+t(sapply(sb_kfcv, function(.) colMeans(.[,1:6])))
+
+# RMSE SD
+t(sapply(sb_kfcv, function(.) apply(.[, 1:6], 2, sd)))
+```
+
+#### RMSE interpretation
+1. When predicting true 0 counts, the models tended to overestimate by 0.36 individuals, or 35-37%. When predicting incidence, the models were off by ~3 individuals, or 15.9-16.8% of the maximum value of incidence (max = 19).
+
+2) Models show some signs of over-fitting, especially in the zeroes.
+
+3) BM6, the lowest AIC model, had the lowest overall error and the lowest error with respect to forecasting count. However, it had the highest error with respect to forecasting zeroes. Again, BM6 and BM7 seem rather similar, but it seems that there is little support for BM7 over BM6 than there was for the sturgeon.
+
+
+## Overall
+One thing that the RMSE should allow us to do is compare models across species if comparing like-to-like. In this instance, we can *definitely* compare performance of predicting zeroes, and *possibly* compare performance in reference to maximum value. Here, the sturgeon models were able to more-accurately predict absence (13% vs 36% error), but not count (23% vs 16% error). This may mean that, comparatively, zero counts influence the model more for sturgeon, while positive counts influence the model more for striped bass.
