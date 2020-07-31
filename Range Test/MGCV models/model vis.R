@@ -8,21 +8,12 @@ data <- readRDS('data and imports/rangetest_logit_binary_pt0.RDS')
 names(data) <- gsub(' ', '_', tolower(names(data)))
 data$array <- as.factor(gsub(' ', '', data$array))
 data <- data[data$distance > 0,]
+data$freq <- data$success / (data$success + data$fail)
 
 
 
-
-# Import winning models ----
+# Import winning model ----
 ##  see "mgcv model selection.R" for selection
-mod_dndt <- gam(cbind(success, fail) ~
-                  distance +
-                  s(average_noise) +
-                  s(dt) +
-                  s(array, bs = 're'),
-                family = binomial(),
-                data = data,
-                method = 'REML',
-                control = gam.control(nthreads = 4))
 
 mod_int <- gam(cbind(success, fail) ~
                       distance +
@@ -35,8 +26,7 @@ mod_int <- gam(cbind(success, fail) ~
 
 
 
-# ~ distance + te(noise, dt) ----
-## Prediction
+# Tensor product prediction ----
 new_data <- expand.grid(
   average_noise = seq(min(data$average_noise) -
                         0.05 * (max(data$average_noise) - min(data$average_noise)),
@@ -81,7 +71,9 @@ data$signif <- ifelse(data$uci_int < 0.5, 'less',
 data$signif <- factor(data$signif,
                       levels = c('more', 'non', 'less'), ordered = T)
 
-## Vis
+
+
+# Tensor product visualization ----
 ggplot(data = new_data, aes(x = dt, y = average_noise, z = pred)) +
   # Draw contours
   geom_contour_filled() +
@@ -95,16 +87,57 @@ ggplot(data = new_data, aes(x = dt, y = average_noise, z = pred)) +
   scale_color_manual(values = c('turquoise', 'gray85', 'yellow4')) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
-  labs(x = 'ΔT', y = 'Noise at 69 kHz', fill = NULL) +
+  labs(x = 'ΔT (°C)', y = 'Ambient noise at 69 kHz (mV)', fill = NULL) +
   theme_bw() +
   theme(axis.text = element_text(size = 12),
         axis.title = element_text(size = 14),
         legend.text = element_text(size = 12))
 
 
-# ~ distance + noise + dt ----
-## Prediction
 
+# Cross section visualization ----
+##  hold noise constant at its median
+med_noise <- median(data[data$distance == 800,]$average_noise)
 
+new_data <- data.frame(array = 'Inner',
+                       distance = 800,
+                       average_noise = med_noise,
+                       dt = seq(min(data$dt) -
+                                  0.01 * (max(data$dt) - min(data$dt)),
+                                max(data$dt) +
+                                  0.01 * (max(data$dt) - min(data$dt)),
+                                length.out = 100)
+)
 
-## Vis
+preds <- predict(mod_int, new_data, type = 'link', se  = T,
+                 exclude = 's(array)')
+
+new_data$pred <- linkinv(preds$fit)
+new_data$lci <- linkinv(preds$fit - 1.96 * preds$se.fit)
+new_data$uci <- linkinv(preds$fit + 1.96 * preds$se.fit)
+
+slice_subset <- data[data$distance == 800 &
+                       data$average_noise %between% c(floor(med_noise - 5),
+                                                      ceiling(med_noise + 5)),]
+
+ggplot() +
+  geom_ribbon(data = new_data, aes(x = dt, ymin = lci, ymax = uci), fill = 'gray') +
+  geom_line(data = new_data, aes(x = dt, y = pred)) +
+
+  ### Do we want a point overlay?
+  # geom_point(inherit.aes = F,
+  #            data = data[data$distance == 800 &
+  #                          data$average_noise %between% c(225, 235),],
+  #            aes(x = dt, y = freq, color = signif),
+  #            show.legend = F) +
+  # scale_color_manual(values = c('turquoise', 'gray85', 'yellow4')) +
+
+  geom_rug(data = slice_subset,
+           aes(x = dt)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 1)) +
+  labs(x = 'ΔT (°C)', y = 'Predicted probability of detection', fill = NULL) +
+  theme_bw() +
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        legend.text = element_text(size = 12))
