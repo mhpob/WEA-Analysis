@@ -1,5 +1,6 @@
 # Packages ----
-library(ggplot2); library(data.table); library(mgcv)
+library(ggplot2); library(patchwork); library(data.table)
+library(changepoint); library(mcp); library(mgcv)
 
 
 
@@ -186,10 +187,10 @@ d50_wea <- apply(d50_sim_wea, 1, median)
 range(d50_inn)
 range(d50_wea)
 
-d50 <- data.frame(d50 = c(d50_inn, d50_wea),
-                  array = c(rep('inn', times = length(d50_inn)),
-                            rep('wea', times = length(d50_wea))),
-                  date = rep(unique(new_data$date), times = 2))
+d50_ran <- data.frame(d50 = c(d50_inn, d50_wea),
+                      array = c(rep('inn', times = length(d50_inn)),
+                                rep('wea', times = length(d50_wea))),
+                      date = rep(unique(new_data$date), times = 2))
 
 
 
@@ -201,8 +202,6 @@ d50 <- data.frame(d50 = c(d50_inn, d50_wea),
 ##    change points, so using changepoint package first, then mcp in order to
 ##    get an idea of the error around the estimate.
 ##    Note: need JAGS and rjags installed to run mcp.
-library(changepoint); library(mcp); library(data.table)
-
 
 d50 <- fread('range test/mgcv models/d50_20200803.csv')
 d50 <- d50[, n_date := as.numeric(date) - as.numeric(min(date))]
@@ -267,16 +266,34 @@ base_lims <- ggplot_build(d50_agg_plot)$layout$panel_scales_y[[1]]$limits
 
 
 ## Plot
-d50_agg_plot +
+TS <- d50_agg_plot +
   ggplot2::stat_density(aes(x = date,
                             # scale to 20% y axis range
-                            y = ..scaled.. * diff(base_lims) * 0.2,
+                            y = ..scaled.. * diff(base_lims) * 0.2 - 1e-13,
                             group = cp),
-                        data = posts, linetype = 'dashed',
+                        data = posts, linetype = 'dashed', size = 1,
                         position = "identity",
                         geom = "line",
-                        show.legend = FALSE)
+                        show.legend = FALSE) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
 
 
 
-# Create histogram ----
+# Create and append histogram ----
+hist <- ggplot() +
+  geom_histogram(data= d50_ran, aes(y = d50, fill = array),
+                 binwidth = 50,
+                 position = 'dodge',
+                 show.legend = F) +
+  scale_fill_viridis_d() +
+  scale_y_continuous(limits = c(0, 1100), expand = c(0, 0)) +
+  scale_x_continuous(limits = c(0, 60), expand = c(0,0)) +
+  labs(x = 'Count', y = NULL) +
+  theme_minimal() +
+  theme(axis.text.y = element_blank(),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 14),
+        panel.grid.minor.x = element_blank())
+
+
+TS + hist + plot_layout(widths = c(4, 1))
