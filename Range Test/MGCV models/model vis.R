@@ -1,5 +1,5 @@
 # Packages ----
-library(ggplot2); library(data.table); library(mgcv)
+library(ggplot2); library(tidyr); library(data.table); library(mgcv)
 
 
 
@@ -54,7 +54,7 @@ new_data$uci <- linkinv(preds$fit + 1.96 * preds$se.fit)
 # Flag points that are too far from observed values
 too.far <- exclude.too.far(new_data$dt, new_data$average_noise,
                            data[data$distance == 800,]$dt, data[data$distance == 800,]$average_noise,
-                           dist = 0.2)
+                           dist = 0.05)
 
 new_data <- new_data[!too.far,]
 
@@ -71,6 +71,12 @@ data$signif <- ifelse(data$uci_int < 0.5, 'less',
 data$signif <- factor(data$signif,
                       levels = c('more', 'non', 'less'), ordered = T)
 
+# Observed @ 800m plus or minus mean model RMSE
+data <- data[data$distance == 800,]
+data$rmse_signif <- ifelse(data$freq < (0.5 - 0.187), 'less',
+                           ifelse(data$freq > (0.5 + 0.187), 'more', 'non'))
+data$rmse_signif <- factor(data$rmse_signif,
+                           levels = c('more', 'non', 'less'), ordered = T)
 
 
 # Tensor product visualization ----
@@ -81,8 +87,8 @@ ggplot(data = new_data, aes(x = dt, y = average_noise, z = pred)) +
   geom_contour(breaks = 0.5, color = 'red', size = 1) +
   # Draw points, colored by significance
   geom_point(inherit.aes = F,
-             data = data[data$distance == 800,],
-             aes(x = dt, y = average_noise, color = signif),
+             data = data,
+             aes(x = dt, y = average_noise, color = rmse_signif),
              show.legend = F) +
   scale_color_manual(values = c('turquoise', 'gray85', 'yellow4')) +
   scale_x_continuous(expand = c(0, 0)) +
@@ -91,7 +97,9 @@ ggplot(data = new_data, aes(x = dt, y = average_noise, z = pred)) +
   theme_bw() +
   theme(axis.text = element_text(size = 12),
         axis.title = element_text(size = 14),
-        legend.text = element_text(size = 12))
+        legend.text = element_text(size = 12),
+        panel.background = element_rect(fill = 'gray96'),
+        panel.grid = element_blank())
 
 
 
@@ -125,12 +133,12 @@ ggplot() +
   geom_line(data = new_data, aes(x = dt, y = pred)) +
 
   ### Do we want a point overlay?
-  # geom_point(inherit.aes = F,
-  #            data = data[data$distance == 800 &
-  #                          data$average_noise %between% c(225, 235),],
-  #            aes(x = dt, y = freq, color = signif),
-  #            show.legend = F) +
-  # scale_color_manual(values = c('turquoise', 'gray85', 'yellow4')) +
+  geom_point(inherit.aes = F,
+             data = data[data$average_noise %between% c(floor(med_noise - 5),
+                                                        ceiling(med_noise + 5)),],
+             aes(x = dt, y = freq, color = rmse_signif),
+             show.legend = F) +
+  scale_color_manual(values = c('turquoise', 'gray85', 'yellow4')) +
 
   geom_rug(data = slice_subset,
            aes(x = dt)) +
