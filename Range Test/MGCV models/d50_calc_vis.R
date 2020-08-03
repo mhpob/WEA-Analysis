@@ -146,9 +146,11 @@ d50 <- as.data.frame(d50)
 d50 <- data.frame(date = unique(new_data$date), d50)
 
 
+# fwrite(d50, 'range test/mgcv models/d50_20200803.csv')
+
 
 # Vis ----
-# d50_agg_plot <-
+d50_agg_plot <-
   ggplot(data = d50) +
   geom_ribbon(aes(x = date, ymin = d50_lci, ymax = d50_uci),
               fill = 'gray', size = 1) +
@@ -189,7 +191,7 @@ d50 <- data.frame(d50 = c(d50_inn, d50_wea),
                             rep('wea', times = length(d50_wea))),
                   date = rep(unique(new_data$date), times = 2))
 
-# fwrite(d50, 'range test/mgcv models/d50_20200803.csv')
+
 
 
 
@@ -208,135 +210,73 @@ d50 <- d50[, n_date := as.numeric(date) - as.numeric(min(date))]
 
 
 ## Use changepoint package to find number of change points ----
-cp_d50wea <- cpt.meanvar(d50[array == 'wea',]$d50,
+cp_d50 <- cpt.meanvar(d50$d50_med,
                          method = 'PELT', penalty = 'CROPS',
                          pen.value = c(15, 500))
 
-plot(cp_d50wea, diagnostic = T)
+plot(cp_d50, diagnostic = T)
 abline(v = 2, col = 'blue')
 ### Two change points found.
 
 
-cp_d50inn <- cpt.meanvar(d50[array == 'inn',]$d50,
-                         method = 'PELT', penalty = 'CROPS',
-                         pen.value = c(15, 500))
-
-plot(cp_d50inn, diagnostic = T)
-abline(v = 2, col = 'blue')
-### Two change points found
-
-
 
 # Use mcp to model change points ----
-## A model with 3 intercepts and abrupt changes in between
-inn_model = list(
-  d50 ~ 1,
-  ~ 1,
-  ~ 1
-)
-
-## Dirichlet priors to push the change points away from each other
-prior = list(
-  cp_1 = "dirichlet(2)",
-  cp_2 = "dirichlet(2)"
-)
-
-
 ## Fit model
-inn_fit <-  mcp(inn_model, data = d50[array == 'inn'], prior = prior,
-                par_x = 'n_date', iter = 10000, chains = 3, cores = 3,
-                adapt = 9000)
-plot(inn_fit)
-
-
-wea_model = list(
-  d50 ~ 1,   # constant rate
-  ~ 1,
-  ~ 1
+cp_fit <-  mcp(
+  ## A model with 3 intercepts and abrupt changes in between
+  model = list(
+    d50_med ~ 1,
+    ~ 1,
+    ~ 1
+  ),
+  par_x = 'n_date',
+  ## Dirichlet priors to push the change points away from each other
+  prior = list(
+    cp_1 = "dirichlet(2)",
+    cp_2 = "dirichlet(2)"
+  ),
+  ## Initialize intercept estimates to help the model converge
+  inits = list(int_1 = 550,
+               int_2 = 800,
+               int_3 = 600),
+  data = d50,
+  cores = 3,
+  iter = 10000
 )
-
-prior = list(
-  cp_1 = "dirichlet(2)",
-  cp_2 = "dirichlet(2)"
-)
-
-wea_fit <- mcp(wea_model, data = d50[array == 'wea'], prior = prior,
-               par_x = 'n_date', iter = 10000, adapt = 5000, chains = 3, cores = 3)
-wea_fit
-plot(wea_fit)
+summary(cp_fit)
+plot(cp_fit)
 
 
 
 # Stack density onto previous D50 vis ----
+##  Code modified from geom_cp_density() within internals of plot.mcp().
+##  geom_cp_density is not exported, check Github.
+
+## Aggregate posterior samples
+posts <- do.call(rbind, cp_fit$mcmc_post)
+posts <- data.table(posts)
+posts <- melt(posts[, c('cp_1', 'cp_2')],
+              measure.vars = c('cp_1', 'cp_2'),
+              variable.name = 'cp',
+              value.name = 'date')
+posts <- posts[, date := as.Date(round(date) + as.numeric(min(d50$date)))]
 
 
-if (which_y == "ct" && geom_data != FALSE) {
-  limits_y = c(min(fit$data[, fit$pars$y]),
-               max(fit$data[, fit$pars$y]))
-} else if (any(q_predict != FALSE)) {
-  limits_y = c(min(samples_expanded$.predicted),
-               max(samples_expanded$.predicted))
-} else if (as.character(yvar) %in% names(samples_expanded)) {
-  limits_y = c(min(dplyr::pull(samples_expanded, as.character(yvar))),
-               max(dplyr::pull(samples_expanded, as.character(yvar))))
-} else {
-  stop("Failed to draw change point density for this plot. Please raise an error on GitHub.")
-}
+## Grab y axis limits from the time series plot
+base_lims <- ggplot_build(d50_agg_plot)$layout$panel_scales_y[[1]]$limits
 
 
-
-d50_agg_plot + geom_cp_density(wea_fit,c(0,1100)) +
-  ggplot2::coord_cartesian(
-    ylim = c(limits_y[1], NA),  # Remove density flat line from view
-    xlim = c(min(wea_fit$data[, wea_fit$pars$x]), max(wea_fit$data[, wea_fit$pars$x]))  # Very broad varying change point posteriors can expand beyond observed range. TO DO
-  )
-
-
-# From internals of plot.mcp (not exported)
-geom_cp_density = function(fit, facet_by = NULL, limits_y) {
-  dens_scale = 0.2  # Proportion of plot height
-  dens_cut = 0.05  # How much to move density down. 5% is ggplot default. Move a bit further.
-
-  # Get varying and population change point parameter names
-    varying = NULL
-    population = wea_fit$.other$ST$cp_name[-1]
+## Plot
+d50_agg_plot +
+  ggplot2::stat_density(aes(x = date,
+                            # scale to 20% y axis range
+                            y = ..scaled.. * diff(base_lims) * 0.2,
+                            group = cp),
+                        data = posts, linetype = 'dashed',
+                        position = "identity",
+                        geom = "line",
+                        show.legend = FALSE)
 
 
 
-  # Get samples in long format
-
-  samples = tidybayes::spread_draws(fit$mcmc_prior, population = population, varying = varying, absolute = TRUE)
-  samples = tidyr::pivot_longer(samples, cols = tidyselect::starts_with("cp_"), names_to = "cp_name", values_to = "value")
-
-  # Make the geom!
-  ggplot2::stat_density(aes(
-    x = value,
-    y = ..scaled.. * diff(limits_y) * dens_scale +  # Scale to proportion of view
-      0 -  # Put on x-axis
-      diff(limits_y) * dens_cut,  # Move a bit further down to remove zero-density line from view.
-    group = paste0(.chain, cp_name),  # Apply scaling for each chain X cp_i combo
-    color = .chain
-  ),
-  data = samples,
-  position = "identity",
-  geom = "line",
-  show.legend = FALSE
-  )
-}
-
-
-k <- do.call(rbind, wea_fit$mcmc_post)
-k <- data.table(k)
-k <- melt(k[,1:2], measure.vars = c('cp_1', 'cp_2'), variable.name = 'cp',value.name = 'date')
-k <- k[, date := as.Date(date + as.numeric(min(d50$date)))]
-
-d50_agg_plot + ggplot2::stat_density(aes(
-  x = date,
-  y = ..scaled.. * diff(c(0,1100)) * dens_scale +  # Scale to proportion of view
-    0 -  # Put on x-axis
-    diff(c(0,1100)) * dens_cut,  # Move a bit further down to remove zero-density line from view.
-  group = cp
-),data = k,
-position = "identity",
-geom = "line",
-show.legend = FALSE)
+# Create histogram ----
