@@ -137,4 +137,16 @@ cp_storm[date %between% c('2018-08-19', '2018-08-24'),
 
 
 
-# Noise stats ----
+# Noise stats and tests ----
+data <- data[, ':='(cp = ifelse(date %between% c('2018-05-02', '2018-09-09'),
+                                'present',
+                                'absent'),
+                    mask = ifelse(average_noise >= 300, 'T', 'F'))]
+
+
+## ANOVA b/w noise in CP+ and CP- periods
+summary(lm(average_noise ~ cp, data = data))
+
+
+## Chi-square test b/w proportion of masked (>300 mV) hours in CP+ and CP- periods
+chisq.test(xtabs(~ cp + mask, data = data), correct = F)
