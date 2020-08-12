@@ -1,5 +1,5 @@
 # Packages ----
-library(ggplot); library(data.table)
+library(ggplot2); library(data.table)
 
 
 # Import data ----
@@ -82,6 +82,12 @@ ggplot() +
   theme(axis.text.x = element_text(angle = 45))
 
 ### Partial destratification due to storm from May 16-19
+### Difference
+cp_storm[date %between% c('2018-05-16', '2018-05-19'),
+         (min(dt) - max(dt)),
+         by = 'array']
+
+
 ### Deg. per day
 cp_storm[date %between% c('2018-05-16', '2018-05-19'),
          (min(dt) - max(dt)) / (.N - 1),
@@ -98,6 +104,11 @@ ggplot() +
   theme(axis.text.x = element_text(angle = 45))
 
 ### Partial destratification due to storm from June 2-4
+### Difference
+cp_storm[date %between% c('2018-06-02', '2018-06-04'),
+         (min(dt) - max(dt)),
+         by = 'array']
+
 ### Deg. per day
 cp_storm[date %between% c('2018-06-02', '2018-06-04'),
          (min(dt) - max(dt)) / (.N - 1),
@@ -114,6 +125,11 @@ ggplot() +
   theme(axis.text.x = element_text(angle = 45))
 
 ### Partial destratification due to storm from July 5-9
+### Difference
+cp_storm[date %between% c('2018-07-05', '2018-07-09'),
+         (min(dt) - max(dt)),
+         by = 'array']
+
 ### Deg. per day
 cp_storm[date %between% c('2018-07-05', '2018-07-09'),
          (min(dt) - max(dt)) / (.N - 1),
@@ -130,6 +146,12 @@ ggplot() +
   theme(axis.text.x = element_text(angle = 45))
 
 ### Partial destratification due to storm from August 19-24
+### Difference
+cp_storm[date %between% c('2018-08-19', '2018-08-24'),
+         (min(dt) - max(dt)),
+         by = 'array']
+
+
 ### Deg. per day
 cp_storm[date %between% c('2018-08-19', '2018-08-24'),
          (min(dt) - max(dt)) / (.N - 1),
@@ -141,12 +163,19 @@ cp_storm[date %between% c('2018-08-19', '2018-08-24'),
 data <- data[, ':='(cp = ifelse(date %between% c('2018-05-02', '2018-09-09'),
                                 'present',
                                 'absent'),
-                    mask = ifelse(average_noise >= 300, 'T', 'F'))]
+                    mask = ifelse(average_noise %between% c(300, 650), 'moderate',
+                                  ifelse(average_noise > 650, 'challenging',
+                                         'good')))]
 
 
 ## ANOVA b/w noise in CP+ and CP- periods
 summary(lm(average_noise ~ cp, data = data))
 
 
-## Chi-square test b/w proportion of masked (>300 mV) hours in CP+ and CP- periods
-chisq.test(xtabs(~ cp + mask, data = data), correct = F)
+## Chi-square test b/w proportion of "good" (<300 mV) and "moderate" (300-650 mV)
+##    days in CP+ and CP- periods
+chisq.test(xtabs(~ cp + mask, data = data[mask %in% c('good', 'moderate')]), correct = F)
+
+## Chi-square test b/w proportion of "good" (<300 mV) and "challengeing" (>650 mV)
+##    days in CP+ and CP- periods
+chisq.test(xtabs(~ cp + mask, data = data[mask %in% c('good', 'challenging')]), correct = F)
