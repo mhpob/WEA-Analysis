@@ -2,8 +2,8 @@ library(readxl)
 sites <- read_excel('p:/obrien/biotelemetry/md wea habitat/data/vr2ar deployment_recovery log.xlsx')
 sites <- sites[grepl('201712', sites$Date),]
 
-from <- '2016-11-11'
-to <- '2018-12-04'
+from <- '2016-10-01'
+to <- '2018-12-31'
 
 lat <- round(sites$`Dep Lat_DD`, 3)
 long <- round(sites$`Dep Long_DD`, 3)
