@@ -17,12 +17,14 @@ cv <- function(data, model, k, repeats = 1, seed = NULL){
                   formula = model$formula,
                   family = model$family$family)
 
-    train_data$pred <- predict(CV_mod, type = 'response')
+    train_data$pred <- predict(CV_mod, type = 'response',
+                               exclude = 'array')
     train_data <- train_data[!train_data$distance %in% c(0, 2400),]
 
 
     # Test the model
-    test_data$pred <- predict(CV_mod, test_data, type = "response")
+    test_data$pred <- predict(CV_mod, test_data, type = 'response',
+                              exclude = 'array')
     test_data <- test_data[!test_data$distance %in% c(0, 2400),]
 
 
@@ -100,8 +102,7 @@ data <- data[data$distance > 0,]
 # ~ Distance ----
 ##  Linear response to distance only (Null model)
 mod_d <- gam(cbind(success, fail) ~
-               distance +
-               s(array, bs = 're'),
+               distance + array,
              family = binomial(),
              data = data,
              method = 'REML',
@@ -117,9 +118,8 @@ apply(kf_d[, grepl('test', names(kf_d))], 2, sd) * 100
 # ~ Distance + s(noise) ----
 ## Nonlinear response to noise
 mod_dn <- gam(cbind(success, fail) ~
-                distance +
-                s(average_noise) +
-                s(array, bs = 're'),
+                distance + array +
+                s(average_noise),
               family = binomial(),
               data = data,
               method = 'REML',
@@ -136,10 +136,9 @@ apply(kf_dn[, grepl('test', names(kf_dn))], 2, sd) * 100
 # ~ Distance + s(noise) + s(dt) ----
 ## Nonlinear response to noise and stratification
 mod_dndt <- gam(cbind(success, fail) ~
-                  distance +
+                  distance + array +
                   s(average_noise) +
-                  s(dt) +
-                  s(array, bs = 're'),
+                  s(dt),
                 family = binomial(),
                 data = data,
                 method = 'REML',
@@ -156,9 +155,8 @@ apply(kf_dndt[, grepl('test', names(kf_dndt))], 2, sd) * 100
 # ~ Distance + te(noise, dt)----
 ## Nonlinear response to noise, modulated by stratification
 mod_dndt_int <- gam(cbind(success, fail) ~
-                      distance +
-                      te(average_noise, dt) +
-                      s(array, bs = 're'),
+                      distance + array +
+                      te(average_noise, dt),
                     family = binomial(),
                     data = data,
                     method = 'REML',
@@ -175,9 +173,8 @@ apply(kf_dndt_int[, grepl('test', names(kf_dndt_int))], 2, sd) * 100
 # ~ Distance + s(dt) ----
 ## Nonlinear response to stratification
 mod_ddt <- gam(cbind(success, fail) ~
-                 distance +
-                 s(dt) +
-                 s(array, bs = 're'),
+                 distance + array +
+                 s(dt),
                family = binomial(),
                data = data,
                method = 'REML',
@@ -193,10 +190,9 @@ apply(kf_ddt[, grepl('test', names(kf_ddt))], 2, sd) * 100
 # ~ Distance + s(noise) + s(bwt) ----
 ## Nonlinear response to noise and near-receiver temperature
 mod_dnbt <- gam(cbind(success, fail) ~
-                  distance +
+                  distance + array +
                   s(average_noise) +
-                  s(average_temperature) +
-                  s(array, bs = 're'),
+                  s(average_temperature),
                 family = binomial(),
                 data = data,
                 method = 'REML',
@@ -213,9 +209,8 @@ apply(kf_dnbt[, grepl('test', names(kf_dnbt))], 2, sd) * 100
 # ~ Distance + te(noise, bwt)----
 ## Nonlinear response to noise, modulated by near-receiver temperature
 mod_dnbt_int <- gam(cbind(success, fail) ~
-                      distance +
-                      te(average_noise, average_temperature) +
-                      s(array, bs = 're'),
+                      distance + array +
+                      te(average_noise, average_temperature),
                     family = binomial(),
                     data = data,
                     method = 'REML',
@@ -232,9 +227,8 @@ apply(kf_dnbt_int[, grepl('test', names(kf_dnbt_int))], 2, sd) * 100
 # ~ Distance + s(bwt) ----
 ## Nonlinear response to near-receiver temperature
 mod_dbt <- gam(cbind(success, fail) ~
-                 distance +
-                 s(average_temperature) +
-                 s(array, bs = 're'),
+                 distance + array +
+                 s(average_temperature),
                family = binomial(),
                data = data,
                method = 'REML',
