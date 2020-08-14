@@ -23,7 +23,7 @@ sites <- read_excel('p:/obrien/biotelemetry/md wea habitat/data/vr2ar deployment
 
 library(png)
 img <- readPNG('range test/manuscript/cartoon_right.png')
-arr <- rasterGrob(img, interpolate = TRUE)
+arr <- grid::rasterGrob(img, interpolate = TRUE)
 
 
 
@@ -59,7 +59,8 @@ main <- ggplot() +
   theme(axis.text = element_text(size = 12 / .pt),
         axis.text.y = element_text(angle = 45, vjust = 0),
         panel.grid = element_line(size = 0),
-        axis.ticks = element_line(size = 0))
+        axis.ticks = element_line(size = 0),
+        plot.margin = unit(c(0, 0, 0, 0), 'mm'))
 
 inset <- ggplotGrob(
   ggplot() +
