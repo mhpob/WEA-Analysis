@@ -13,19 +13,29 @@ cv <- function(data, model, k, repeats = 1, seed = NULL){
     train_data <- data_shuffle[-test_ids, ]
 
     # Train the model.
-    CV_mod <- gam(data = train_data,
-                  formula = model$formula,
-                  family = model$family$family)
+    if('gam' %in% class(model)){
+      CV_mod <- gam(data = train_data,
+                    formula = model$formula,
+                    family = model$family$family,
+                    method = model$method,
+                    control = model$control)
+    } else{
+      CV_mod <- glm(data = train_data,
+                    formula = model$formula,
+                    family = model$family$family,
+                    control = model$control)
+    }
+
 
     train_data$pred <- predict(CV_mod, type = 'response',
                                exclude = 'array')
-    train_data <- train_data[!train_data$distance %in% c(0, 2400),]
+    # train_data <- train_data[!train_data$distance %in% c(0, 2400),]
 
 
     # Test the model
     test_data$pred <- predict(CV_mod, test_data, type = 'response',
                               exclude = 'array')
-    test_data <- test_data[!test_data$distance %in% c(0, 2400),]
+    # test_data <- test_data[!test_data$distance %in% c(0, 2400),]
 
 
     # Penalty functions
@@ -96,19 +106,33 @@ data <- readRDS('data and imports/rangetest_logit_binary_pt0.RDS')
 names(data) <- gsub(' ', '_', tolower(names(data)))
 data$array <- as.factor(gsub(' ', '', data$array))
 data$freq <- data$success / (data$success + data$fail)
-data <- data[data$distance > 0,]
+data <- data[data$distance > 0 & data$distance < 2400,]
 
 
 # ~ Distance ----
 ##  Linear response to distance only (Null model)
-mod_d <- gam(cbind(success, fail) ~
+##  There are some convergence issues when fitting as a GAM, so fitting this as
+##    a GLM.
+mod_d <- glm(freq ~
                distance + array,
-             family = binomial(),
-             data = data,
-             method = 'REML',
-             control = gam.control(nthreads = 4))
+             family = quasibinomial,
+             data = data)
 
-AIC(mod_d)
+##  Calculate adj-R^2 and dev expl to compare with GAM fits
+summary_func <- function(model){
+  w <- model$prior.weights
+  nobs <- nrow(model$model)
+  mean.y <- sum(w * model$y) / sum(w)
+  residual.df <- length(model$y) - sum(model$edf)
+
+  data.frame(
+    adjR2 = 1 - var(w * (as.numeric(model$y) - model$fitted.values)) *
+      (nobs - 1) / (var(w * (as.numeric(model$y) - mean.y)) * model$df.residual),
+    dev.expl = (model$null.deviance - model$deviance) / model$null.deviance
+  )
+}
+
+summary_func(mod_d)
 ##  5-fold cross-validation
 kf_d <- cv(data, mod_d, k = 5, repeats = 5)
 colMeans(kf_d[, grepl('test', names(kf_d))]) * 100
@@ -117,10 +141,10 @@ apply(kf_d[, grepl('test', names(kf_d))], 2, sd) * 100
 
 # ~ Distance + s(noise) ----
 ## Nonlinear response to noise
-mod_dn <- gam(cbind(success, fail) ~
+mod_dn <- gam(freq ~
                 distance + array +
                 s(average_noise),
-              family = binomial(),
+              family = quasibinomial(),
               data = data,
               method = 'REML',
               control = gam.control(nthreads = 4))
@@ -135,11 +159,11 @@ apply(kf_dn[, grepl('test', names(kf_dn))], 2, sd) * 100
 
 # ~ Distance + s(noise) + s(dt) ----
 ## Nonlinear response to noise and stratification
-mod_dndt <- gam(cbind(success, fail) ~
+mod_dndt <- gam(freq ~
                   distance + array +
                   s(average_noise) +
                   s(dt),
-                family = binomial(),
+                family = quasibinomial(),
                 data = data,
                 method = 'REML',
                 control = gam.control(nthreads = 4))
@@ -154,10 +178,10 @@ apply(kf_dndt[, grepl('test', names(kf_dndt))], 2, sd) * 100
 
 # ~ Distance + te(noise, dt)----
 ## Nonlinear response to noise, modulated by stratification
-mod_dndt_int <- gam(cbind(success, fail) ~
+mod_dndt_int <- gam(freq ~
                       distance + array +
                       te(average_noise, dt),
-                    family = binomial(),
+                    family = quasibinomial(),
                     data = data,
                     method = 'REML',
                     control = gam.control(nthreads = 4))
@@ -172,10 +196,10 @@ apply(kf_dndt_int[, grepl('test', names(kf_dndt_int))], 2, sd) * 100
 
 # ~ Distance + s(dt) ----
 ## Nonlinear response to stratification
-mod_ddt <- gam(cbind(success, fail) ~
+mod_ddt <- gam(freq ~
                  distance + array +
                  s(dt),
-               family = binomial(),
+               family = quasibinomial(),
                data = data,
                method = 'REML',
                control = gam.control(nthreads = 4))
@@ -189,11 +213,11 @@ apply(kf_ddt[, grepl('test', names(kf_ddt))], 2, sd) * 100
 
 # ~ Distance + s(noise) + s(bwt) ----
 ## Nonlinear response to noise and near-receiver temperature
-mod_dnbt <- gam(cbind(success, fail) ~
+mod_dnbt <- gam(freq ~
                   distance + array +
                   s(average_noise) +
                   s(average_temperature),
-                family = binomial(),
+                family = quasibinomial(),
                 data = data,
                 method = 'REML',
                 control = gam.control(nthreads = 4))
@@ -208,10 +232,10 @@ apply(kf_dnbt[, grepl('test', names(kf_dnbt))], 2, sd) * 100
 
 # ~ Distance + te(noise, bwt)----
 ## Nonlinear response to noise, modulated by near-receiver temperature
-mod_dnbt_int <- gam(cbind(success, fail) ~
+mod_dnbt_int <- gam(freq ~
                       distance + array +
                       te(average_noise, average_temperature),
-                    family = binomial(),
+                    family = quasibinomial(),
                     data = data,
                     method = 'REML',
                     control = gam.control(nthreads = 4))
@@ -226,10 +250,10 @@ apply(kf_dnbt_int[, grepl('test', names(kf_dnbt_int))], 2, sd) * 100
 
 # ~ Distance + s(bwt) ----
 ## Nonlinear response to near-receiver temperature
-mod_dbt <- gam(cbind(success, fail) ~
+mod_dbt <- gam(freq ~
                  distance + array +
                  s(average_temperature),
-               family = binomial(),
+               family = quasibinomial(),
                data = data,
                method = 'REML',
                control = gam.control(nthreads = 4))
