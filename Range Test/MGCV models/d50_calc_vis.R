@@ -158,7 +158,7 @@ d50_agg_plot <-
   geom_line(aes(x = date, y = d50_med)) +
   labs(x = NULL, y = 'Distance at 50% detection probability (m)') +
   scale_y_continuous(limits=c(0, 1100), expand = c(0, 0)) +
-  scale_x_date(date_breaks = 'month', date_labels = '%b-%y', expand = c(0, 0)) +
+  scale_x_date(date_breaks = 'month', date_labels = '%b', expand = c(0, 0)) +
   theme_bw() +
   theme(axis.text = element_text(size = 12),
         axis.title = element_text(size = 14))
@@ -266,16 +266,29 @@ base_lims <- ggplot_build(d50_agg_plot)$layout$panel_scales_y[[1]]$limits
 
 
 ## Plot
+d50_agg_plot <-
+  ggplot(data = d50) +
+  geom_ribbon(aes(x = date, ymin = d50_lci, ymax = d50_uci),
+              fill = 'gray') +
+  geom_line(aes(x = date, y = d50_med), size = 0) +
+  labs(x = NULL, y = 'Distance at 50% detectability (m)') +
+  scale_y_continuous(limits=c(0, 1100), expand = c(0, 0)) +
+  scale_x_date(date_breaks = 'month', date_labels = '%b', expand = c(0, 0)) +
+  theme_bw()
+
 TS <- d50_agg_plot +
   ggplot2::stat_density(aes(x = date,
                             # scale to 20% y axis range
                             y = ..scaled.. * diff(base_lims) * 0.2 - 1e-13,
                             group = cp),
-                        data = posts, linetype = 'dashed', size = 1,
+                        data = posts, color = 'brown', size = 0,
                         position = "identity",
                         geom = "line",
                         show.legend = FALSE) +
-  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+  theme(axis.text.x = element_text(angle = 30, hjust = 1),
+        axis.title.y = element_text(margin = margin(0, 0, -3, 0)),
+        plot.margin = unit(c(0.1, 0.05, 0, 0.1), 'mm'),
+        axis.ticks = element_line(size = 0))
 
 
 
@@ -285,15 +298,25 @@ hist <- ggplot() +
                  binwidth = 50,
                  position = 'dodge',
                  show.legend = F) +
-  scale_fill_viridis_d() +
+  scale_fill_manual(values = c('#D55E00', '#0072B2')) +
   scale_y_continuous(limits = c(0, 1100), expand = c(0, 0)) +
-  scale_x_continuous(limits = c(0, 60), expand = c(0,0)) +
+  scale_x_continuous(limits = c(0, 60), expand = c(0,0), breaks = seq(0, 60, 20)) +
   labs(x = 'Count', y = NULL) +
   theme_minimal() +
   theme(axis.text.y = element_blank(),
-        axis.text.x = element_text(size = 12),
-        axis.title.x = element_text(size = 14),
-        panel.grid.minor.x = element_blank())
+        # axis.text.x = element_text(size = 6),
+        axis.title.x = element_text(margin =  margin(-3,0,0,0)),
+        panel.grid.minor.x = element_blank(),
+        plot.margin = unit(c(0.05, 0.05, 0, 0.05), 'mm'))
 
 
-TS + hist + plot_layout(widths = c(4, 1))
+tiff("range test/manuscript/figures/Figure4.tif",
+     width = 85, height = 40, units = 'mm', compression = 'lzw', res = 600,
+     pointsize = 10)
+
+TS + hist + plot_layout(widths = c(4, 1)) &
+  theme(panel.grid = element_line(size = 0),
+        axis.title = element_text(size = 6),
+        axis.text = element_text(size = 6))
+
+dev.off()
