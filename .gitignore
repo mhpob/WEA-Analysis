@@ -39,6 +39,8 @@ vignettes/*.pdf
 *.nb.html
 *.docx
 *.pdf
+*.zip
+*.xl*
 
 # Animation output
 images/
@@ -61,6 +63,8 @@ Data and imports/HabMod
 # Images
 *.jpeg
 *.png
+*.ai
+*.tif
 
 # Misc
 lab meeting*/
