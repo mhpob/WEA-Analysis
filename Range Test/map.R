@@ -17,7 +17,7 @@ sites <- read_excel('p:/obrien/biotelemetry/md wea habitat/data/vr2ar deployment
   select(cruise = `Cruise ID`, site = `Site ID`,
          lat = `Dep Lat_DD`, long = `Dep Long_DD`) %>%
   filter(cruise == 201712,
-         grepl('AN3|IS|AN2', site)) %>%
+         grepl('AN3|IS2', site)) %>%
   st_as_sf(coords = c('long', 'lat'), crs = 4326)
 
 
