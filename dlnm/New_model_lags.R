@@ -62,110 +62,111 @@ sturgd_list$Site <- as.factor(sturgd_list$Site)
 
 
 # Pulling out all of the formulas to fit the models in parallel
-forms <- c("freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
+forms <- c("freq~s(Qs2,Ls2,bs='cb',k=c(6, 6)) +s(Site, bs = 're')+
              s(Year, bs = 're')+
-             s(CHLA,bs='tp')+
+             s(CHLA,bs='tp', k = 6)+
              s(DOY,bs='cs',k=6)+
-             s(Depth,bs='tp')+
+             s(Depth,bs='tp', k = 6)+
              offset(log(d50.s))",
-           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qs2,Ls2,bs='cb',k=c(6, 6))+s(Site, bs = 're')+
              s(Year, bs = 're')+
-             s(CHLA,bs='tp')+
+             s(CHLA,bs='tp', k = 6)+
              s(DOY,bs='cs',k=6)+
              offset(log(d50.s))",
-           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qs2,Ls2,bs='cb',k=c(6, 6))+s(Site, bs = 're')+
              s(Year, bs = 're')+
-             s(CHLA,bs='tp')+
-             s(Depth,bs='tp')+
+             s(CHLA,bs='tp', k = 6)+
+             s(Depth,bs='tp', k = 6)+
              offset(log(d50.s))",
-           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qs2,Ls2,bs='cb',k=c(6, 6))+s(Site, bs = 're')+
              s(Year, bs = 're')+
              s(DOY,bs='cs',k=6)+
-             s(Depth,bs='tp')+
+             s(Depth,bs='tp', k = 6)+
              offset(log(d50.s))",
            "freq~s(Site, bs = 're')+
              s(Year, bs = 're')+
-             s(CHLA,bs='tp')+
+             s(CHLA,bs='tp', k = 6)+
              s(DOY,bs='cs',k=6)+
-             s(Depth,bs='tp')+
+             s(Depth,bs='tp', k = 6)+
              offset(log(d50.s))",
-           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qs2,Ls2,bs='cb',k=c(6, 6))+s(Site, bs = 're')+
              s(Year, bs = 're')+
-             s(CHLA,bs='tp')+
-             t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
+             s(CHLA,bs='tp', k = 6)+
+             te(DOY,Depth,bs=c('cp', 'tp'),k=c(6,6))+
              offset(log(d50.s))",
-           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qs2,Ls2,bs='cb',k=c(6, 6))+s(Site, bs = 're')+
              s(Year, bs = 're')+
-             t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
-             offset(log(d50.s))",
-           "freq~s(Site, bs = 're')+
-             s(Year, bs = 're')+
-             s(CHLA,bs='tp')+
-             t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
+             te(DOY,Depth,bs=c('cp', 'tp'),k=c(6, 6))+
              offset(log(d50.s))",
            "freq~s(Site, bs = 're')+
              s(Year, bs = 're')+
-             t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
+             s(CHLA,bs='tp', k = 6)+
+             te(DOY,Depth,bs=c('cp', 'tp'),k=c(6, 6))+
              offset(log(d50.s))",
-           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Site, bs = 're')+
+             s(Year, bs = 're')+
+             te(DOY,Depth,bs=c('cp', 'tp'),k=c(6, 6))+
+             offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=c(6, 6))+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(Depth,bs='tp')+
-              t2(DOY,CHLA,bs=c('cp', 'tp'),k=6)+
+              s(Depth,bs='tp', k = 6)+
+              te(DOY,CHLA,bs=c('cp', 'tp'),k= c(6, 6))+
               offset(log(d50.s))",
-           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qs2,Ls2,bs='cb',k=c(6, 6))+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              t2(DOY,CHLA,bs=c('cp', 'tp'),k=6)+
+              te(DOY,CHLA,bs=c('cp', 'tp'),k=c(6, 6))+
               offset(log(d50.s))",
            "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(Depth,bs='tp')+
-              t2(DOY,CHLA,bs=c('cp', 'tp'),k=6)+
+              s(Depth,bs='tp', k = 6)+
+              te(DOY,CHLA,bs=c('cp', 'tp'),k=c(6, 6))+
               offset(log(d50.s))",
            "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              t2(DOY,CHLA,bs=c('cp', 'tp'),k=6)+
+              te(DOY,CHLA,bs=c('cp', 'tp'),k=c(6, 6))+
               offset(log(d50.s))",
-           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qs2,Ls2,bs='cb',k=c(6, 6))+s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(DOY,bs='cs',k=6)+
-              t2(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
+              te(Depth,CHLA,bs=c('tp', 'tp'),k=c(6, 6))+
               offset(log(d50.s))",
-           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qs2,Ls2,bs='cb',k=c(6, 6))+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              t2(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
-              offset(log(d50.s))",
-           "freq~s(Site, bs = 're')+
-              s(Year, bs = 're')+
-              s(DOY,bs='cs',k=6)+
-              t2(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
-              offset(log(d50.s))",
-           "freq~s(Site, bs = 're')+
-              s(Year, bs = 're')+
-              t2(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
-              offset(log(d50.s))",
-           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
-              s(Year, bs = 're')+
-              s(DOY,bs='cs',k=6)+
-              s(Depth,bs='tp')+
+              te(Depth,CHLA,bs=c('tp', 'tp'),k=c(6, 6))+
               offset(log(d50.s))",
            "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(DOY,bs='cs',k=6)+
-              s(Depth,bs='tp')+
-              offset(log(d50.s))",
-           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
-              s(Year, bs = 're')+
-              t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
-              offset(log(d50.s))",
-           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
-              s(Year, bs = 're')+
-              s(CHLA,bs='tp')+
+              te(Depth,CHLA,bs=c('tp', 'tp'),k=c(6, 6))+
               offset(log(d50.s))",
            "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(CHLA,bs='tp')+
+              te(Depth,CHLA,bs=c('tp', 'tp'),k=c(6, 6))+
               offset(log(d50.s))",
-           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Site, bs = 're')+
+              s(Year, bs = 're')+
+              s(CHLA,bs='tp',k=6)+
+              s(Depth,bs='tp', k=6)+
+              offset(log(d50.s))",
+           "freq~s(Site, bs = 're')+
+              s(Year, bs = 're')+
+              s(DOY,bs='cs',k=6)+
+              s(Depth,bs='tp', k =6)+
+              offset(log(d50.s))",
+           "freq~s(Site, bs = 're')+
+              s(Year, bs = 're')+
+              s(DOY,bs='cs',k=6)+
+              s(CHLA,bs='tp',k=6)+
+              offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=c(6, 6))+s(Site, bs = 're')+
+              s(Year, bs = 're')+
+              s(CHLA,bs='tp', k=6)+
+              offset(log(d50.s))",
+           "freq~s(Site, bs = 're')+
+              s(Year, bs = 're')+
+              s(CHLA,bs='tp', k=6)+
+              offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k=c(6, 6))+s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(DOY,bs='cs',k=6)+
               offset(log(d50.s))",
@@ -173,13 +174,16 @@ forms <- c("freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(DOY,bs='cs',k=6)+
               offset(log(d50.s))",
-           "freq~s(Qs2,Ls2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qs2,Ls2,bs='cb',k = c(6, 6))+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(Depth,bs='tp')+
+              s(Depth,bs='tp', k=6)+
               offset(log(d50.s))",
            "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(Depth,bs='tp')+
+              s(Depth,bs='tp', k=6)+
+              offset(log(d50.s))",
+           "freq~s(Qs2,Ls2,bs='cb',k = c(6, 6))+s(Site, bs = 're')+
+              s(Year, bs = 're')+
               offset(log(d50.s))")
 
 # remove the carriage returns (I was too lazy to do anything but copy/paste)
@@ -195,31 +199,34 @@ clusterExport(cl, 'sturgd_list')
 
 
 # Fit models
-as_models <- parLapply(cl,
-                       forms,
+library(pbapply)
+as_models <- pblapply(forms,
                        function(.){
                          gam(formula = as.formula(.),
                              data = sturgd_list,
                              family = ziP,
                              method = 'REML')
-                       })
+                       },
+                      cl = cl)
 
 # Close cluster
 stopCluster(cl)
 
-names(as_models) <- paste0('SM', 1:26)
+names(as_models) <- paste0('SM', 1:27)
 
-# saveRDS(as_models, 'sturg_lag_models.RDS')
+# saveRDS(as_models, 'dlnm/sturg_lag_models.RDS')
+# as_models <- readRDS('dlnm/sturg_lag_models.RDS')
 
 summary(as_models$SM1)
 
 s_ic <- data.frame(AIC = sapply(as_models, AIC))
 s_ic$dAIC <- s_ic$AIC - min(s_ic$AIC)
 s_ic <- s_ic[order(s_ic$dAIC),]
+s_ic$wAIC <- exp(-0.5 * s_ic$dAIC)
+s_ic$wAIC <- s_ic$wAIC / sum(s_ic$wAIC)
+s_ic$cwAIC <- cumsum(s_ic$wAIC)
 
-
-## SM6 and SM7 seem to be equally-likely candidates.
-## SM7 and SM20, as well as SM4 and SM18 are the same models.
+## SM6 and SM7 seem to be somewhat-comparabe candidates.
 
 
 
@@ -270,110 +277,111 @@ bassd_list$CHLA <- log(bassd_list$CHLA)
 bassd_list$Site <- as.factor(bassd_list$Site)
 
 
-forms <- c("freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
+forms <- c("freq~s(Qb2,Lb2,bs='cb',k = c(6, 6))+s(Site, bs = 're')+
              s(Year, bs = 're')+
-             s(CHLA,bs='tp')+
+             s(CHLA,bs='tp', k=6)+
              s(DOY,bs='cs',k=6)+
-             s(Depth,bs='tp')+
+             s(Depth,bs='tp', k=6)+
              offset(log(d50.b))",
-           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qb2,Lb2,bs='cb',k = c(6, 6))+s(Site, bs = 're')+
              s(Year, bs = 're')+
-             s(CHLA,bs='tp')+
+             s(CHLA,bs='tp', k=6)+
              s(DOY,bs='cs',k=6)+
              offset(log(d50.b))",
-           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qb2,Lb2,bs='cb',k = c(6, 6))+s(Site, bs = 're')+
              s(Year, bs = 're')+
-             s(CHLA,bs='tp')+
-             s(Depth,bs='tp')+
+             s(CHLA,bs='tp', k=6)+
+             s(Depth,bs='tp', k=6)+
              offset(log(d50.b))",
-           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qb2,Lb2,bs='cb',k = c(6, 6))+s(Site, bs = 're')+
              s(Year, bs = 're')+
              s(DOY,bs='cs',k=6)+
-             s(Depth,bs='tp')+
+             s(Depth,bs='tp', k=6)+
              offset(log(d50.b))",
            "freq~s(Site, bs = 're')+
              s(Year, bs = 're')+
-             s(CHLA,bs='tp')+
+             s(CHLA,bs='tp', k=6)+
              s(DOY,bs='cs',k=6)+
-             s(Depth,bs='tp')+
+             s(Depth,bs='tp', k=6)+
              offset(log(d50.b))",
-           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qb2,Lb2,bs='cb',k = c(6, 6))+s(Site, bs = 're')+
              s(Year, bs = 're')+
-             s(CHLA,bs='tp')+
-             t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
+             s(CHLA,bs='tp', k=6)+
+             te(DOY,Depth,bs=c('cp', 'tp'),k=c(6, 6))+
              offset(log(d50.b))",
-           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qb2,Lb2,bs='cb',k = c(6, 6))+s(Site, bs = 're')+
              s(Year, bs = 're')+
-             t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
-             offset(log(d50.b))",
-           "freq~s(Site, bs = 're')+
-             s(Year, bs = 're')+
-             s(CHLA,bs='tp')+
-             t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
+             te(DOY,Depth,bs=c('cp', 'tp'),k=c(6, 6))+
              offset(log(d50.b))",
            "freq~s(Site, bs = 're')+
              s(Year, bs = 're')+
-             t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
+             s(CHLA,bs='tp', k=6)+
+             te(DOY,Depth,bs=c('cp', 'tp'),k=c(6, 6))+
              offset(log(d50.b))",
-           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Site, bs = 're')+
+             s(Year, bs = 're')+
+             te(DOY,Depth,bs=c('cp', 'tp'),k=c(6, 6))+
+             offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k = c(6, 6))+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(Depth,bs='tp')+
-              t2(DOY,CHLA,bs=c('cp', 'tp'),k=6)+
+              s(Depth,bs='tp', k=6)+
+              te(DOY,CHLA,bs=c('cp', 'tp'),k=c(6, 6))+
               offset(log(d50.b))",
-           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qb2,Lb2,bs='cb',k = c(6, 6))+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              t2(DOY,CHLA,bs=c('cp', 'tp'),k=6)+
+              te(DOY,CHLA,bs=c('cp', 'tp'),k=c(6, 6))+
               offset(log(d50.b))",
            "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(Depth,bs='tp')+
-              t2(DOY,CHLA,bs=c('cp', 'tp'),k=6)+
+              s(Depth,bs='tp', k=6)+
+              te(DOY,CHLA,bs=c('cp', 'tp'),k=c(6, 6))+
               offset(log(d50.b))",
            "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              t2(DOY,CHLA,bs=c('cp', 'tp'),k=6)+
+              te(DOY,CHLA,bs=c('cp', 'tp'),k=c(6, 6))+
               offset(log(d50.b))",
-           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qb2,Lb2,bs='cb',k = c(6, 6))+s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(DOY,bs='cs',k=6)+
-              t2(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
+              te(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
               offset(log(d50.b))",
-           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qb2,Lb2,bs='cb',k = c(6, 6))+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              t2(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
-              offset(log(d50.b))",
-           "freq~s(Site, bs = 're')+
-              s(Year, bs = 're')+
-              s(DOY,bs='cs',k=6)+
-              t2(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
-              offset(log(d50.b))",
-           "freq~s(Site, bs = 're')+
-              s(Year, bs = 're')+
-              t2(Depth,CHLA,bs=c('tp', 'tp'),k=6)+
-              offset(log(d50.b))",
-           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
-              s(Year, bs = 're')+
-              s(DOY,bs='cs',k=6)+
-              s(Depth,bs='tp')+
+              te(Depth,CHLA,bs=c('tp', 'tp'),k=c(6, 6))+
               offset(log(d50.b))",
            "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(DOY,bs='cs',k=6)+
-              s(Depth,bs='tp')+
-              offset(log(d50.b))",
-           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
-              s(Year, bs = 're')+
-              t2(DOY,Depth,bs=c('cp', 'tp'),k=6)+
-              offset(log(d50.b))",
-           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
-              s(Year, bs = 're')+
-              s(CHLA,bs='tp')+
+              te(Depth,CHLA,bs=c('tp', 'tp'),k=c(6, 6))+
               offset(log(d50.b))",
            "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(CHLA,bs='tp')+
+              te(Depth,CHLA,bs=c('tp', 'tp'),k=c(6, 6))+
               offset(log(d50.b))",
-           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Site, bs = 're')+
+              s(Year, bs = 're')+
+              s(CHLA,bs='tp',k=6)+
+              s(Depth,bs='tp', k=6)+
+              offset(log(d50.b))",
+           "freq~s(Site, bs = 're')+
+              s(Year, bs = 're')+
+              s(DOY,bs='cs',k=6)+
+              s(Depth,bs='tp', k=6)+
+              offset(log(d50.b))",
+           "freq~s(Site, bs = 're')+
+              s(Year, bs = 're')+
+              s(CHLA, bs = 'tp', k = 6) +
+              s(DOY, bs = 'cs', k = 6) +
+              offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k = c(6, 6))+s(Site, bs = 're')+
+              s(Year, bs = 're')+
+              s(CHLA,bs='tp', k=6)+
+              offset(log(d50.b))",
+           "freq~s(Site, bs = 're')+
+              s(Year, bs = 're')+
+              s(CHLA,bs='tp', k=6)+
+              offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k = c(6, 6))+s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(DOY,bs='cs',k=6)+
               offset(log(d50.b))",
@@ -381,13 +389,16 @@ forms <- c("freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
               s(Year, bs = 're')+
               s(DOY,bs='cs',k=6)+
               offset(log(d50.b))",
-           "freq~s(Qb2,Lb2,bs='cb',k=10)+s(Site, bs = 're')+
+           "freq~s(Qb2,Lb2,bs='cb',k = c(6, 6))+s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(Depth,bs='tp')+
+              s(Depth,bs='tp', k=6)+
               offset(log(d50.b))",
            "freq~s(Site, bs = 're')+
               s(Year, bs = 're')+
-              s(Depth,bs='tp')+
+              s(Depth,bs='tp', k=6)+
+              offset(log(d50.b))",
+           "freq~s(Qb2,Lb2,bs='cb',k = c(6, 6))+s(Site, bs = 're')+
+              s(Year, bs = 're')+
               offset(log(d50.b))")
 
 # remove the carriage returns
@@ -400,8 +411,8 @@ cl <- makeCluster(cl)
 clusterEvalQ(cl, list(library(dlnm), library(mgcv)))
 clusterExport(cl, 'bassd_list')
 
-sb_models <- parLapply(cl,
-                       forms,
+library(pbapply)
+sb_models <- pblapply(forms,
                        function(.){
                          # One of the models doesn't want to converge, so using
                          # tryCatach to make it save the error and move on rather
@@ -412,21 +423,21 @@ sb_models <- parLapply(cl,
                                family = ziP,
                                method = 'REML')
                          }, error = function(e) return(paste('Error in', as.formula(.))))
-                       })
+                       },
+                      cl = cl)
 stopCluster(cl)
 
-names(sb_models) <-  paste0('BM', 1:26)
+names(sb_models) <-  paste0('BM', 1:27)
 
 # saveRDS(sb_models, 'dlnm/sb_lag_models.RDS')
 
 summary(sb_models$BM1)
 
-b_ic <- data.frame(AIC = sapply(sb_models, function(.){
-  tryCatch(AIC(.),
-           error = function(e) NA)}
-))
-
-b_ic$dAIC <- b_ic$AIC - min(b_ic$AIC, na.rm = T)
+b_ic <- data.frame(AIC = sapply(sb_models, AIC))
+b_ic$dAIC <- b_ic$AIC - min(b_ic$AIC)
 b_ic <- b_ic[order(b_ic$dAIC),]
+b_ic$wAIC <- exp(-0.5 * b_ic$dAIC)
+b_ic$wAIC <- b_ic$wAIC / sum(b_ic$wAIC)
+b_ic$cwAIC <- cumsum(b_ic$wAIC)
 
-##
+## BM6 is clear winner
