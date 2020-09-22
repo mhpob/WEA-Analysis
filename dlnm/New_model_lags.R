@@ -3,39 +3,41 @@ library(dplyr); library(dlnm); library(mgcv)
 
 ## I edited the column name of "Day" in sturg_full.csv directly before loading in,
 ##    as the column had wound up called "Day.x".    -MOB
-sturgn<-read.csv("dlnm/data/Sturg_full.csv",header=T)
-sturgn <- subset(sturgn,select=-c(1))
-
-sturgn[,2]<-as.POSIXct(sturgn[,2],format="%Y-%m-%d")
-
-sturgd<- aggregate(sturgn$freq,
-                   by = list(Site=sturgn$Site,
-                             Day=sturgn$Day,
-                             DOY=sturgn$DOY,
-                             CHLA=sturgn$CHLA,
-                             SST=sturgn$SST,
-                             Depth=sturgn$Depth,
-                             d50.s=sturgn$d50.s,
-                             time=sturgn$time,
-                             Season=sturgn$Season,
-                             Seasonb=sturgn$Seasonb,
-                             Year=sturgn$Year),FUN= "sum")
-
-colnames(sturgd)[12] <- "freq"
-sturgd$Year<-as.factor(sturgd$Year)
-
-Lags<-read.csv("dlnm/data/AllLags.csv",header=T)
-
-## Also removing SST column -- it's redundant after the join. -- MOB
-Lags <- subset(Lags,select=-c(1, 4))
-
-Lags[,2]<-as.POSIXct(Lags[,2],format="%Y-%m-%d")
-
-sturgda<-left_join(sturgd, Lags, by=c("Day","Site"))
-sturgd2<-sturgda[!duplicated(sturgda),]
+# sturgn<-read.csv("dlnm/data/Sturg_full.csv",header=T)
+# sturgn <- subset(sturgn,select=-c(1))
 #
-sturgd2 <- sturgd2[with(sturgd2,order(time,Site)),]
+# sturgn[,2]<-as.POSIXct(sturgn[,2],format="%Y-%m-%d")
+#
+# sturgd<- aggregate(sturgn$freq,
+#                    by = list(Site=sturgn$Site,
+#                              Day=sturgn$Day,
+#                              DOY=sturgn$DOY,
+#                              CHLA=sturgn$CHLA,
+#                              SST=sturgn$SST,
+#                              Depth=sturgn$Depth,
+#                              d50.s=sturgn$d50.s,
+#                              time=sturgn$time,
+#                              Season=sturgn$Season,
+#                              Seasonb=sturgn$Seasonb,
+#                              Year=sturgn$Year),FUN= "sum")
+#
+# colnames(sturgd)[12] <- "freq"
+# sturgd$Year<-as.factor(sturgd$Year)
+#
+# Lags<-read.csv("dlnm/data/AllLags.csv",header=T)
+#
+# ## Also removing SST column -- it's redundant after the join. -- MOB
+# Lags <- subset(Lags,select=-c(1, 4))
+#
+# Lags[,2]<-as.POSIXct(Lags[,2],format="%Y-%m-%d")
+#
+# sturgda<-left_join(sturgd, Lags, by=c("Day","Site"))
+# sturgd2<-sturgda[!duplicated(sturgda),]
+# #
+# sturgd2 <- sturgd2[with(sturgd2,order(time,Site)),]
 # write.csv(sturgd2, 'dlnm/sturg_w_lags.csv', row.names = F)
+
+sturgd2 <- read.csv("dlnm/data/sturg_w_lags.csv")
 
 
 ## For visualization and cross-validation later, we need to have all the data
@@ -231,34 +233,34 @@ s_ic$cwAIC <- cumsum(s_ic$wAIC)
 
 
 ## Now for striped bass
-bassn<-read.csv("dlnm/data/Bass_full.csv",header=T)
-bassn <- subset(bassn,select=-c(1))
-
-bassn[,2]<-as.POSIXct(bassn[,2],format="%Y-%m-%d")
-
-bassd<- aggregate(bassn$freq,
-                  by = list(Site=bassn$Site,
-                            Day=bassn$Day,
-                            DOY=bassn$DOY,
-                            CHLA=bassn$CHLA,
-                            SST=bassn$SST,
-                            Depth=bassn$Depth,
-                            d50.b=bassn$d50.b,
-                            time=bassn$time,
-                            Season=bassn$Season,
-                            Seasonb=bassn$Seasonb,
-                            Year=bassn$Year),FUN= "sum")
-
-colnames(bassd)[12] <- "freq"
-bassd$Year<-as.factor(bassd$Year)
-
-bassda<-left_join(bassd, Lags, by=c("Day","Site"))
-bassd2<-bassda[!duplicated(bassda),]
+# bassn<-read.csv("dlnm/data/Bass_full.csv",header=T)
+# bassn <- subset(bassn,select=-c(1))
 #
-bassd2 <- bassd2[with(bassd2,order(time,Site)),]
+# bassn[,2]<-as.POSIXct(bassn[,2],format="%Y-%m-%d")
+#
+# bassd<- aggregate(bassn$freq,
+#                   by = list(Site=bassn$Site,
+#                             Day=bassn$Day,
+#                             DOY=bassn$DOY,
+#                             CHLA=bassn$CHLA,
+#                             SST=bassn$SST,
+#                             Depth=bassn$Depth,
+#                             d50.b=bassn$d50.b,
+#                             time=bassn$time,
+#                             Season=bassn$Season,
+#                             Seasonb=bassn$Seasonb,
+#                             Year=bassn$Year),FUN= "sum")
+#
+# colnames(bassd)[12] <- "freq"
+# bassd$Year<-as.factor(bassd$Year)
+#
+# bassda<-left_join(bassd, Lags, by=c("Day","Site"))
+# bassd2<-bassda[!duplicated(bassda),]
+# #
+# bassd2 <- bassd2[with(bassd2,order(time,Site)),]
 # write.csv(bassd2, 'dlnm/data/bass_w_lags.csv', row.names = F)
 
-
+bassd2 <- read.csv('dlnm/data/bass_w_lags.csv')
 
 # Converted to list, as for sturgeon, above   -MOB
 bassd_list <- as.list(bassd2[, 1:12])
