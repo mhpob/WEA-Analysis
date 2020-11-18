@@ -1,0 +1,439 @@
+---
+title: "Model visualization, but with more knots"
+author: "Mike O'Brien"
+date: "Oct 26, 2020"
+output: html_notebook
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = 'c:/users/darpa2/analysis/wea-analysis/dlnm')
+# knitr::opts_knit$set(root.dir = 'p:/obrien/biotelemetry/md wea habitat/wea-analysis/dlnm')
+```
+
+After discussion with Ellie, we wanted to try and increase the number of knots allowed in the GAMM. Unfortunately, the results/visualization using only 6 knots were not that compelling; I wanted to increase the "wiggliness" of the model to allow smaller deviations to emerge and not get washed out by extreme predictions.
+
+For, say, DOY, with 6 knots we only allowed a trend to change, on average, every 2 months; with depth it's every 5 m; with SST it's every 4C; with lag it's every 5 days. My first blush suggestion, which I report on here, was to allow up to bi-weekly knots (26 + 1 (for the degree of freedom) = 27 total) for DOY; a knot every 2m (14 + 1 = 15 total) depth; every 2C for SSTlag (10 + 1 = 11 total); every 2 days lag (15 + 1 = 16); and ln(CHLA) -- no idea -- let's say 10 (9+1). Those would be the maximum wiggliness allowed, based on our *a priori* expectations on the scale at which those parameters are relevant (I wouldn't think a difference in depth of 2m would affect much, for instance). The mgcv algorithm will penalize the wiggliness down from there. My hope would be that allowing more wiggliness would allow us to pick up more of the "0.002" or "0.15" values that are hidden in a subsection of the data to make a compelling visual story.
+
+
+## Packages
+```{r}
+library(dlnm)
+library(mgcv)
+library(ggplot2)
+library(tidyr)
+```
+
+
+## Sturgeon
+```{r}
+as_models <- readRDS('sturg_lag_models_moreknots.RDS')
+
+s_ic <- data.frame(AIC = sapply(as_models, AIC))
+s_ic$dAIC <- s_ic$AIC - min(s_ic$AIC)
+s_ic <- s_ic[order(s_ic$dAIC),]
+s_ic$wAIC <- exp(-0.5 * s_ic$dAIC)
+s_ic$wAIC <- s_ic$wAIC / sum(s_ic$wAIC)
+s_ic$cwAIC <- cumsum(s_ic$wAIC)
+
+head(s_ic)
+```
+
+After adding in all of the knots, the best models were SM6, with 56% weight, and SM7, with 44% weight.
+
+### SM6 v SM7
+#### SM6
+The SM6 model is:
+
+$\sim \beta_0 + f(ln(CHLA)) + f(SST:Lag) + f(DOY:Depth) + Site_i + Year_j + ln(D_{50})$
+
+where $\beta_0$ is the intercept, $Site_i$ is the effect of site $i$ on the intercept, and $Year_j$ is the effect of year $j$ on the intercept.
+
+```{r}
+summary(as_models$SM6)
+```
+
+```{r, cache=TRUE}
+gam.check(as_models$SM6, k.sample = 200)
+```
+
+The model generally fits well, though there is still some overdispersion (the tail in the histogram of residuals).
+
+#### SM7
+The SM7 model is:
+
+$\sim \beta_0 + f(SST:Lag) + f(DOY:Depth) + Site_i + Year_j + ln(D_{50})$
+
+where $\beta_0$ is the intercept, $Site_i$ is the effect of site $i$ on the intercept, and $Year_j$ is the effect of year $j$ on the intercept.
+
+```{r, cache=TRUE}
+summary(as_models$SM7)
+```
+
+```{r}
+gam.check(as_models$SM7, k.sample = 2000)
+```
+
+These show similar diagnostics as before.
+
+
+#### Comparison
+**So**, the only difference between the two models is the $ln(CHLA)$ term, which has support according to AIC, but is not a "significant" term. It seems that $ln(CHLA)$ is pulling a little bit of variance from the $SST:Lag$ term ("`s(Qs2,Ls2)`") since that is the only term that changed noticeably judging by the estimated degrees of freedom ("`edf`") -- just a little over a difference of 1. We may be able to see what values the variance is being pulled from by looking at their plots.
+
+Quick look at $SST:Lag$:
+```{r}
+plot(crosspred('Qs2', as_models$SM6, cen = 0), ptype = 'contour')
+plot(crosspred('Qs2', as_models$SM7, cen = 0), ptype = 'contour')
+```
+
+All other terms:
+```{r}
+plot(as_models$SM6, pages = 1)
+plot(as_models$SM7, pages = 1)
+```
+
+I don't see a noticeable change in much, to be honest. Comparing the two $SST:Lag$ plots, it seems like SM7 has slightly more extreme values, but nothing breathtaking.
+
+### SST:Lag
+```{r}
+data_prep <- function(model){
+  new_data_lag <- expand.grid(
+    Qs2 = seq(-9, 11, length.out = 100),
+    Ls2 = seq(0, 29, length.out = 100)
+  )
+  
+  # assume constant offset for now
+  new_data_lag$d50.s <- exp(median(model$model$`offset(log(d50.s))`))
+  
+  # remove predictions too far from an observation
+  too_far <- exclude.too.far(new_data_lag$Qs2, new_data_lag$Ls2,
+                             model$model$Qs2, model$model$Ls2, 0.1)
+  new_data_lag <- new_data_lag[!too_far,]
+  
+  preds <- predict(model, new_data_lag, type = 'response',
+                   exclude = c('s(Site)', 's(Year)', 's(CHLA)', 'te(DOY,Depth)'),
+                   newdata.guaranteed = T)
+  
+  new_data_lag$pred <- preds
+  
+  new_data_lag
+}
+```
+```{r}
+# SM6
+ggplot(data = data_prep(as_models$SM6), aes(x = Qs2, y = Ls2, z = pred)) +
+  geom_contour_filled() +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(title = 'SM6 (with ln(CHLA)') +
+  theme_minimal()
+
+# SM7
+ggplot(data = data_prep(as_models$SM7), aes(x = Qs2, y = Ls2, z = pred)) +
+  geom_contour_filled() +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(title = 'SM7 (without ln(CHLA)') +
+  theme_minimal()
+```
+
+
+
+
+### What about taking slices?
+
+Quick note: for calculation and convergence purposes, `mgcv` uses the identity link when using the `ziP` family. However, results on the link scale, which should be the same as the response scale due to the identity link, are actually returned on the log scale. Because of this, I can't use a baked-in inverse link function; I'm just going to take the exponent of the returned link values. If you feel like playing around with it, you can see that results from `mgcv::predict(..., type = 'response')` will match `exp(mgcv::predict(..., type = 'link'))`.
+
+Results from `mgcv::predict(..., type = 'link')` include the intercept. Results from `mgcv::predict(..., type = 'iterms')` don't, which means we can see if the SEs overlap with 0 for pointwise significance.
+
+```{r}
+data_prep <- function(model){
+  new_data_lag <- expand.grid(
+    Qs2 = seq(-9, 11, length.out = 100),
+    Ls2 = seq(0, 29, 1)
+  )
+  
+  new_data_lag <- data.frame(Qs2 = new_data_lag$Qs2,
+                             Ls2 = new_data_lag$Ls2,
+                             d50.s = exp(
+                               mean(model$model$`offset(log(d50.s))`)
+                             )
+  )
+  
+  preds <- predict(model, new_data_lag, type = 'iterms', se = T,
+                   terms = 's(Qs2,Ls2)',
+                   newdata.guaranteed = T)
+  
+  # Calculate predictions and confidence intervals
+  new_data_lag$pred <- (preds$fit)
+  new_data_lag$lci <- (preds$fit - 1.96 * preds$se.fit)
+  new_data_lag$uci <- (preds$fit + 1.96 * preds$se.fit)
+  
+  new_data_lag
+}
+
+rug_data <- function(model){ 
+  # Find observed values to make a rug
+  obs <- data.frame(model$model$Qs2)
+  obs <- pivot_longer(obs, cols = starts_with('SST'),
+                      names_to = 'Ls2', values_to = 'Qs2')
+  
+  # convert lag written as "SST*" to a number
+  obs$Ls2 <- as.numeric(gsub('SST', '', obs$Ls2)) - 1
+  
+  # drop repeated combinations
+  obs <- unique(obs[, c('Ls2', 'Qs2')])
+  
+  obs
+}
+
+
+new_data_lag <- data_prep(as_models$SM6)
+obs <- rug_data(as_models$SM6)
+
+
+all_plots <- ggplot() +
+  geom_ribbon(data = new_data_lag,
+              aes(x = Qs2, y = pred, ymin = lci, ymax = uci),
+              fill = 'lightgray') +
+  geom_line(data = new_data_lag,
+            aes(x = Qs2, y = pred)) +
+  geom_rug(data = obs,
+           aes(x = Qs2), alpha = 0.2, sides = 't') +
+  geom_hline(yintercept = 0) +
+  scale_x_continuous(expand = c(0, 0)) +
+  labs(x = 'Temperature lag', y = 'Centered ln(Predicted individuals)') +
+  theme_minimal()
+
+all_plots +
+  ggforce::facet_wrap_paginate(~Ls2, ncol = 3, nrow = 2)
+
+all_plots +
+  ggforce::facet_wrap_paginate(~Ls2, ncol = 3, nrow = 2, page = 2)
+
+all_plots +
+  ggforce::facet_wrap_paginate(~Ls2, ncol = 3, nrow = 2, page = 3)
+
+all_plots +
+  ggforce::facet_wrap_paginate(~Ls2, ncol = 3, nrow = 2, page = 4)
+
+all_plots +
+  ggforce::facet_wrap_paginate(~Ls2, ncol = 3, nrow = 2, page = 5)
+```
+
+
+
+Looks like there isn't much going on (within the rug) until we get to lags 27-29. SM7 is very similar:
+
+
+```{r}
+new_data_lag <- data_prep(as_models$SM7)
+obs <- rug_data(as_models$SM7)
+
+all_plots <- ggplot() +
+  geom_ribbon(data = new_data_lag,
+              aes(x = Qs2, y = pred, ymin = lci, ymax = uci),
+              fill = 'lightgray') +
+  geom_line(data = new_data_lag,
+            aes(x = Qs2, y = pred)) +
+  geom_rug(data = obs,
+           aes(x = Qs2), alpha = 0.2, sides = 't') +
+  # coord_cartesian(ylim = c(0, 0.5)) +
+  geom_hline(yintercept = 0) +
+  scale_x_continuous(expand = c(0, 0)) +
+  labs(x = 'Temperature lag', y = 'Centered ln(Predicted individuals)') +
+  theme_minimal()
+
+all_plots +
+  ggforce::facet_wrap_paginate(~Ls2, ncol = 3, nrow = 2)
+
+all_plots +
+  ggforce::facet_wrap_paginate(~Ls2, ncol = 3, nrow = 2, page = 2)
+
+all_plots +
+  ggforce::facet_wrap_paginate(~Ls2, ncol = 3, nrow = 2, page = 3)
+
+all_plots +
+  ggforce::facet_wrap_paginate(~Ls2, ncol = 3, nrow = 2, page = 4)
+
+all_plots +
+  ggforce::facet_wrap_paginate(~Ls2, ncol = 3, nrow = 2, page = 5)
+```
+
+
+
+
+This is the marginal effect of the SST lag smooth (partial effect? I always forget...). This means that effects of all other variables were dropped from the model. So $\sim f(SSTlag) + f(DOY:Depth)$, for example, becomes $\sim f(SSTlag) + 0 * f(DOY:Depth)$ (that explanation is likely incorrect, but that's how I see it in my non-statistician mind). What if we focus on the effect of $f(SSTlag)$ at different levels of $f(DOY:Depth)$? So, adjust the "intercept" up and down according to the outcome of $f(DOY:Depth)$. What would an interesting combination of DOY and depth be? I've highlighted two below:
+
+```{r}
+plot(as_models$SM6, select = 5)
+points(125, 16, col = 'blue', pch = 19, cex = 2)
+points(275, 31, col = 'blue', pch = 19, cex = 2)
+```
+
+Okay, so it looks like a depth of 16m on day 125 (May 4) and a depth of 31m on day 275 (Oct 1) are predicted sturgeon hot spots (if all other model terms are set to zero). How does the predicted number of sturgeon respond on those days/depths to lagged SST?
+
+```{r}
+data_prep <- function(model){
+  new_data_lag <- expand.grid(
+    Qs2 = seq(-9, 11,length.out = 100),
+    Ls2 = seq(0, 29, length.out = 100)
+  )
+  new_data_lag <- data.frame(Qs2 = rep(new_data_lag$Qs2, times = 2),
+                             Ls2 = rep(new_data_lag$Ls2, times = 2),
+                             DOY = rep(c(125, 275), times = nrow(new_data_lag)),
+                             Depth = rep(c(16, 31), times = nrow(new_data_lag)),
+                             d50.s = exp(rep(c(
+                               # mean D50 on DOY 125
+                               mean(model$model[model$model$DOY == 125,]$`offset(log(d50.s))`),
+                               # mean D50 on DOY 275
+                               mean(model$model[model$model$DOY == 275,]$`offset(log(d50.s))`)
+                             ), times = nrow(new_data_lag)))
+  )
+  
+  too_far <- exclude.too.far(new_data_lag$Qs2, new_data_lag$Ls2,
+                             model$model$Qs2, model$model$Ls2, 0.1)
+  
+  new_data_lag <- new_data_lag[!too_far,]
+  
+  preds <- predict(model, new_data_lag, type = 'response',
+                   exclude = c('s(Site)', 's(Year)', 's(CHLA)'),
+                   newdata.guaranteed = T)
+  
+  new_data_lag$pred <- preds
+  
+  new_data_lag
+}
+
+data_plot <- function(model){
+  ggplot(data = data_prep(model), aes(x = Qs2, y = Ls2, z = pred)) +
+    geom_contour_filled() +
+    scale_x_continuous(expand = c(0, 0)) +
+    scale_y_continuous(expand = c(0, 0)) +
+    facet_wrap(~interaction(DOY, Depth)) +
+    labs(x = 'Lagged temperature', y = 'Lag number') +
+    theme_minimal()
+}
+```
+
+```{r}
+# SM6
+data_plot(as_models$SM6) +
+  labs(title = 'SM6')
+
+# SM7
+data_plot(as_models$SM7) +
+  labs(title = 'SM7')
+```
+
+Lags of 0 and 29 might be interesting -- they have the largest values.
+
+
+```{r}
+data_prep <- function(model){
+  new_data_lag <- expand.grid(
+    Qs2 = seq(-9, 11, length.out = 100),
+    Ls2 = seq(0, 29, 1)
+  )
+  
+  new_data_lag <- data.frame(Qs2 = rep(new_data_lag$Qs2, times = 2),
+                             Ls2 = rep(new_data_lag$Ls2, times = 2),
+                             DOY = rep(c(125, 275), times = nrow(new_data_lag)),
+                             Depth = rep(c(16, 31), times = nrow(new_data_lag)),
+                             d50.s = exp(rep(c(
+                               mean(model$model[model$model$DOY == 125,]$`offset(log(d50.s))`),
+                               mean(model$model[model$model$DOY == 275,]$`offset(log(d50.s))`)
+                             ), times = nrow(new_data_lag)))
+  )
+  
+  preds <- predict(model, new_data_lag, type = 'link', se = T,
+                   exclude = c('s(Site)', 's(Year)', 's(CHLA)'),
+                   newdata.guaranteed = T)
+  
+  new_data_lag$pred <- exp(preds$fit)
+  new_data_lag$lci <- exp(preds$fit - 1.96 * preds$se.fit)
+  new_data_lag$uci <- exp(preds$fit + 1.96 * preds$se.fit)
+  
+  new_data_lag
+}
+```
+
+```{r}
+# SM6
+new_data_lag <- data_prep(as_models$SM6)
+ggplot() +
+  geom_ribbon(data = new_data_lag[new_data_lag$Ls2 %in% c(0, 29),],
+              aes(x = Qs2, y = pred, ymin = lci, ymax = uci),
+              fill = 'lightgray') +
+  geom_line(data = new_data_lag[new_data_lag$Ls2 %in% c(0, 29),], aes(x = Qs2, y = pred)) +
+  geom_rug(data = obs[obs$Ls2 %in% c(0, 29),],
+           aes(x = Qs2), alpha = 0.2, sides = 't') +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  facet_grid(Ls2 ~ interaction(DOY, Depth), scales = 'free_y')+
+  labs(title = 'SM6', x = 'Lagged temperature', y = 'Individuals') +
+  theme_minimal()
+
+# SM7
+new_data_lag <- data_prep(as_models$SM7)
+ggplot() +
+  geom_ribbon(data = new_data_lag[new_data_lag$Ls2 %in% c(0, 29),],
+              aes(x = Qs2, y = pred, ymin = lci, ymax = uci),
+              fill = 'lightgray') +
+  geom_line(data = new_data_lag[new_data_lag$Ls2 %in% c(0, 29),], aes(x = Qs2, y = pred)) +
+  geom_rug(data = obs[obs$Ls2 %in% c(0, 29),],
+           aes(x = Qs2), alpha = 0.2, sides = 't') +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  facet_grid(Ls2 ~ interaction(DOY, Depth), scales = 'free_y')+
+  labs(title = 'SM7', x = 'Lagged temperature', y = 'Individuals') +
+  theme_minimal()
+```
+
+### ln(CHLA)
+Left to the end, but it's worth taking a look at.
+
+```{r}
+new_data <- data.frame(CHLA = seq(min(as_models$SM6$model$CHLA),
+                                  max(as_models$SM6$model$CHLA),
+                                  length.out = 100),
+                       d50.s = exp(
+                         mean(as_models$SM6$model$`offset(log(d50.s))`)
+                       )
+)
+
+preds <- predict(as_models$SM6, new_data, type = 'iterms', se = T,
+                 exclude = c('s(Site)', 's(Year)',  's(Qs2,Ls2)', 'te(DOY,Depth)'),
+                 newdata.guaranteed = T, unconditional = T)
+
+new_data$pred_link <- preds$fit
+new_data$lci_link <- preds$fit - 1.96 * preds$se.fit
+new_data$uci_link <- preds$fit + 1.96 * preds$se.fit
+
+new_data$pred_resp <- exp(new_data$pred_link)
+new_data$lci_resp <- exp(new_data$lci_link)
+new_data$uci_resp <- exp(new_data$uci_link)
+
+ggplot(data = new_data) +
+  geom_ribbon(aes(x = CHLA, ymin = lci_link, ymax = uci_link), fill = 'lightgray') +
+  geom_line(aes(x = CHLA, y = pred_link)) +
+  geom_rug(data = as_models$SM6$model, aes(x = CHLA)) +
+  labs(x = 'ln(CHLA)', y = 'ln(Pred. individuals)', title = 'Link scale') +
+  theme_bw()
+
+
+ggplot(data = new_data) +
+  geom_ribbon(aes(x = CHLA, ymin = lci_resp, ymax = uci_resp), fill = 'lightgray') +
+  geom_line(aes(x = CHLA, y = pred_resp)) +
+  geom_rug(data = as_models$SM6$model, aes(x = CHLA)) +
+  labs(x = 'ln(CHLA)', y = 'Pred. individuals', title = 'Response scale') +
+  theme_bw()
+```
+
+
+
+
+## Striped bass
+```{r}
+sb_models <- readRDS('sb_lag_models_moreknots.RDS')
+```
+
