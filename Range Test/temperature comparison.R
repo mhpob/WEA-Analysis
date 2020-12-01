@@ -36,7 +36,7 @@ ggplot() +
   geom_line(data = data,
             aes(x = date, y = value, lty = site, color = type)) +
   scale_color_manual(breaks = c('SST', 'BWT'),
-                     values = c('#0072B2', 'black', 'black', '#D55E00')) +
+                     values = c(SST = '#0072B2', NOISE = 'black', DT = 'black', BWT = '#D55E00')) +
   scale_linetype_manual(values = c('solid', 'dashed')) +
   facet_wrap(~ group, ncol = 1,
              labeller = label_parsed,
@@ -75,12 +75,14 @@ ggplot() +
   geom_line(data = data,
             aes(x = date, y = value, color = site, lty = type)) +
   scale_color_manual(values = c('#0072B2','#D55E00')) +
-  scale_linetype_manual(breaks = c('SST', 'BWT'),
-                        values = c('solid', 'solid','solid', 'dotted')) +
+  scale_linetype_manual(breaks = c('BWT', 'SST'),
+                        values = c(DT = 'solid', NOISE = 'solid',
+                                   BWT = 'solid', SST = 'dotted')) +
   facet_wrap(~ group, ncol = 1,
              labeller = label_parsed,
-             strip.position = 'right', scales = 'free_y') +
-  geom_blank(data = lims, aes(y = y)) +  scale_y_continuous(breaks = function(.){
+             strip.position = 'right', scales = 'free_y')+
+  geom_blank(data = lims, aes(y = y)) +
+  scale_y_continuous(breaks = function(.){
     if(max(.) > 600) c(200, 400, 600, 800) else c(0, 5, 10, 15, 20, 25)
   }) +
   scale_x_date(date_breaks = 'month', date_labels = '%b', expand = c(0, 0)) +
