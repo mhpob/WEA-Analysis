@@ -26,12 +26,9 @@ coast <- rbind(coast_2017, coast_2018)
 coast <- coast[date >= '2017-12-21' & date <= '2018-12-04']
 
 
-coast <- coast[,
-               .(mean = mean(WSPD_m_s),
-                 max = max(WSPD_m_s)),
+coast <- coast[WSPD_m_s >= 13.9,
+               .(max = max(WSPD_m_s)),
                by = date]
-
-coast[, gale := ifelse(mean >= 17.2, T, F)]
 
 
 
@@ -45,14 +42,10 @@ ocmd <- ocmd[, .(wspd = mean(WSPD_m_s),
                  date = as.Date(paste(YY_yr, MM_mo, DD_dy, sep = '-'))),
              by = c('YY_yr', 'MM_mo', 'DD_dy', 'hh_hr')]
 
-ocmd <- ocmd[,
-             .(mean = mean(wspd),
-               max = max(wspd)), by = date]
-ocmd[, gale := ifelse(mean >= 17.2, T, F)]
+ocmd <- ocmd[wspd >= 13.9,
+             .(max = max(wspd)), by = date]
 
 coast <- rbind(coast, ocmd)
-
-coast <- coast[mean >= 10.8]
 
 coast[, group := 'Noise~(mV)']
 coast[, group := factor(group, levels = c('Temperature~(degree*C)',
@@ -109,12 +102,10 @@ ggplot() +
              labeller = label_parsed,
              strip.position = 'right', scales = 'free_y')+
 
-  ggnewscale::new_scale_color() +
   geom_rug(data = coast,
-           aes(x = date, color = gale), length = unit(0.07, "npc"),
+           aes(x = date), length = unit(0.07, "npc"),
            inherit.aes = T,
            show.legend = F) +
-  scale_color_manual(values = c('black', 'red')) +
 
   geom_blank(data = lims, aes(y = y)) +
   scale_y_continuous(breaks = function(.){
