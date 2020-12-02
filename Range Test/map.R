@@ -27,11 +27,11 @@ arr <- grid::rasterGrob(img, interpolate = TRUE)
 
 
 
-library(ggplot2); library(ggspatial)
+library(ggplot2); library(ggspatial); library(ragg)
 
 ## Make a one-column map
 main <- ggplot() +
-  geom_sf(data = bathy, color = 'gray', lwd = 0) +
+  geom_sf(data = bathy, color = 'gray', size = 0.1) +
   geom_label(data = data.frame(
     lab = c('10', '20', '30'),
     x = c(-75.1, -74.838, -74.695),
@@ -39,14 +39,15 @@ main <- ggplot() +
   ),
   aes(x = x, y = y, label = lab),
   label.size = 0, label.padding = unit(0.1, "lines"), size = 1) +
-  geom_sf(data = md_coast, size = 0) +
+  geom_sf(data = md_coast, size = 0.1) +
   geom_sf(data = sites, aes(color = ifelse(grepl('A', site), T, F),
                             shape = ifelse(site %in% c('IS1', 'AN2'), T, F)),
           show.legend = F) +
   scale_color_manual(values = c('#D55E00', '#0072B2')) +
   scale_shape_manual(values = c(1, 4)) +
   coord_sf(xlim = c(-75.15, -74.675),
-           ylim = c(38.25, 38.45)) +
+           ylim = c(38.25, 38.46)) +
+  annotate('point', x = -74.70167, y = 38.45667, shape = 'triangle') +
   annotation_scale(text_cex = 0.5, height = unit(1, 'mm')) +
   annotate('segment', arrow = arrow(length = unit(2, 'mm')),
            x = -74.85, xend = -74.775,
@@ -58,26 +59,25 @@ main <- ggplot() +
   theme_bw() +
   theme(axis.text = element_text(size = 12 / .pt),
         axis.text.y = element_text(angle = 45, vjust = 0),
-        panel.grid = element_line(size = 0),
-        axis.ticks = element_line(size = 0),
+        panel.grid = element_line(size = 0.1),
+        axis.ticks = element_line(size = 0.1),
         plot.margin = unit(c(0, 0, 0, 0), 'mm'))
 
 inset <- ggplotGrob(
   ggplot() +
-    geom_sf(data = atl_coast, lwd = 0) +
+    geom_sf(data = atl_coast, size = 0.1) +
     coord_sf(xlim = c(-77.5, -69.5),
              ylim = c(35.5, 43)) +
     annotate('rect', xmin = -75.15, xmax = -74.6, ymin = 38.2, ymax = 38.5,
-             fill = NA, color = 'red', size  = 0)+
+             fill = NA, color = 'red', size  = 0.1)+
     theme_void() +
     theme(panel.background = element_rect(fill = 'white'))
 )
 
 
 
-tiff("range test/manuscript/figures/Figure1.tif",
-     width = 85, height = 46.7, units = 'mm', compression = 'lzw', res = 600,
-     pointsize = 10)
+agg_tiff("range test/manuscript/revisions/figures/Figure1.tif",
+         width = 85, height = 46.9, units = 'mm', compression = 'lzw', res = 600)
 
 
 main +
