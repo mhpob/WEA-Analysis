@@ -93,7 +93,7 @@ ggplot() +
             aes(x = date, y = value, color = site, lty = type)) +
 
   scale_color_manual(values = c('#0072B2','#D55E00')) +
-  scale_linetype_manual(breaks = c('BWT', 'SST'),
+  scale_linetype_manual(breaks = c('SST', 'BWT'),
                         values = c(DT = 'solid', NOISE = 'solid',
                                    BWT = 'solid', SST = 'dashed')) +
   facet_wrap(~ group, ncol = 1,
