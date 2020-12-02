@@ -26,8 +26,7 @@ coast <- rbind(coast_2017, coast_2018)
 coast <- coast[date >= '2017-12-21' & date <= '2018-12-04']
 
 
-coast <- coast[WSPD_m_s >= 13.9,
-               .(max = max(WSPD_m_s)),
+coast <- coast[, .(max = max(WSPD_m_s)),
                by = date]
 
 
@@ -42,8 +41,7 @@ ocmd <- ocmd[, .(wspd = mean(WSPD_m_s),
                  date = as.Date(paste(YY_yr, MM_mo, DD_dy, sep = '-'))),
              by = c('YY_yr', 'MM_mo', 'DD_dy', 'hh_hr')]
 
-ocmd <- ocmd[wspd >= 13.9,
-             .(max = max(wspd)), by = date]
+ocmd <- ocmd[, .(max = max(wspd)), by = date]
 
 coast <- rbind(coast, ocmd)
 
@@ -82,9 +80,9 @@ lims$group <- factor(lims$group, ordered = T, levels = unique(lims$group))
 
 
 
+library(ragg)
 
-
-tiff("range test/manuscript/figures/Figure2_colorsites.tif",
+agg_tiff("range test/manuscript/revisions/figures/Figure2.tif",
      width = 170, height = 100, units = 'mm', compression = 'lzw', res = 600,
      pointsize = 8)
 
@@ -97,13 +95,17 @@ ggplot() +
   scale_color_manual(values = c('#0072B2','#D55E00')) +
   scale_linetype_manual(breaks = c('BWT', 'SST'),
                         values = c(DT = 'solid', NOISE = 'solid',
-                                   BWT = 'solid', SST = 'dotted')) +
+                                   BWT = 'solid', SST = 'dashed')) +
   facet_wrap(~ group, ncol = 1,
              labeller = label_parsed,
              strip.position = 'right', scales = 'free_y')+
 
-  geom_rug(data = coast,
+  geom_rug(data = coast[max >= 17.2],
            aes(x = date), length = unit(0.07, "npc"),
+           inherit.aes = T,
+           show.legend = F) +
+  geom_rug(data = coast[max >= 10.8 & max < 17.2],
+           aes(x = date), length = unit(0.03, "npc"),
            inherit.aes = T,
            show.legend = F) +
 
