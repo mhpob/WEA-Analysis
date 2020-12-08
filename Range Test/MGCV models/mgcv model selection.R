@@ -101,6 +101,13 @@ cv <- function(data, model, k, repeats = 1, seed = NULL){
 
 }
 
+QAIC <- function(model, c_hat){
+  k <- length(model$coefficients) + 1      # add 1 for the estimate of c_hat
+  (model$deviance / c_hat) + 2 * k
+}
+
+
+
 # Data ----
 data <- readRDS('data and imports/rangetest_logit_binary_pt0.RDS')
 names(data) <- gsub(' ', '_', tolower(names(data)))
@@ -109,13 +116,38 @@ data$freq <- data$success / (data$success + data$fail)
 data <- data[data$distance > 0 & data$distance < 2400,]
 
 
+
+# Overdispersion ----
+## Fit global model it see if data is overdispersed.
+## Use quasibinomial family since it returns the dispersion
+mod_global <- gam(cbind(success, fail) ~
+                         distance + array +
+                         s(dt) +
+                         s(average_temperature) +
+                         s(average_noise) +
+                         ti(average_noise, average_temperature) +
+                         ti(average_noise, dt),
+                       family = quasibinomial(),
+                       data = data,
+                       method = 'REML',
+                       control = gam.control(nthreads = 4))
+
+## c-hat:
+c_hat <- summary(mod_global)$dispersion
+# [1] 2.498263
+
+## c-hat estimated to be >1, so overdispersed. Moving forward with quasibinomial
+##  family and QAIC as outlined in functions section
+
+
+
 # ~ Distance ----
 ##  Linear response to distance only (Null model)
 ##  There are some convergence issues when fitting as a GAM, so fitting this as
 ##    a GLM.
 mod_d <- glm(freq ~
                distance + array,
-             family = quasibinomial,
+             family = quasibinomial(),
              data = data)
 
 ##  Calculate adj-R^2 and dev expl to compare with GAM fits
@@ -128,7 +160,8 @@ summary_func <- function(model){
   data.frame(
     adjR2 = 1 - var(w * (as.numeric(model$y) - model$fitted.values)) *
       (nobs - 1) / (var(w * (as.numeric(model$y) - mean.y)) * model$df.residual),
-    dev.expl = (model$null.deviance - model$deviance) / model$null.deviance
+    dev.expl = (model$null.deviance - model$deviance) / model$null.deviance,
+    qaic = QAIC(mod_d, c_hat)
   )
 }
 
@@ -143,7 +176,7 @@ apply(kf_d[, grepl('test', names(kf_d))], 2, sd) * 100
 ## Nonlinear response to noise
 mod_dn <- gam(freq ~
                 distance + array +
-                s(average_noise),
+                s(average_noise, k = 12),
               family = quasibinomial(),
               data = data,
               method = 'REML',
@@ -180,7 +213,9 @@ apply(kf_dndt[, grepl('test', names(kf_dndt))], 2, sd) * 100
 ## Nonlinear response to noise, modulated by stratification
 mod_dndt_int <- gam(freq ~
                       distance + array +
-                      te(average_noise, dt),
+                      s(average_noise) +
+                      s(dt) +
+                      ti(average_noise, dt),
                     family = quasibinomial(),
                     data = data,
                     method = 'REML',
@@ -234,7 +269,9 @@ apply(kf_dnbt[, grepl('test', names(kf_dnbt))], 2, sd) * 100
 ## Nonlinear response to noise, modulated by near-receiver temperature
 mod_dnbt_int <- gam(freq ~
                       distance + array +
-                      te(average_noise, average_temperature),
+                      s(average_noise) +
+                      s(average_temperature) +
+                      ti(average_noise, average_temperature),
                     family = quasibinomial(),
                     data = data,
                     method = 'REML',
@@ -266,9 +303,38 @@ apply(kf_dbt[, grepl('test', names(kf_dbt))], 2, sd) * 100
 
 
 
-# AIC comparison ---
-ic <- AIC(mod_d, mod_dn, mod_dndt, mod_dndt_int,
-          mod_ddt, mod_dnbt, mod_dnbt_int, mod_dbt)
-ic$dAIC <- ic$AIC - min(ic$AIC)
-ic <- ic[order(ic$dAIC),]
+# QAIC comparison ---
+ic <- data.frame(
+  model = c('mod_d', 'mod_dn', 'mod_dndt', 'mod_dndt_int', 'mod_ddt', 'mod_dnbt',
+            'mod_dnbt_int', 'mod_dbt'),
+  QAIC = sapply(list(mod_d, mod_dn, mod_dndt, mod_dndt_int,
+                     mod_ddt, mod_dnbt, mod_dnbt_int, mod_dbt),
+                QAIC, c_hat = c_hat)
+)
+
+ic$dQAIC <- ic$QAIC - min(ic$QAIC)
+ic$wQAIC <- exp(-0.5 * ic$dQAIC)
+ic$wQAIC <- ic$wQAIC / sum(ic$wQAIC)
+ic <- ic[order(ic$dQAIC),]
 ic
+
+
+
+mod_global <- gam(freq ~
+                    distance + array +
+                    s(dt) +
+                    s(average_temperature) +
+                    s(average_noise) +
+                    ti(average_noise, average_temperature) +
+                    ti(average_noise, dt),
+                  family = quasibinomial(),
+                  data = data,
+                  method = 'REML',
+                  control = gam.control(nthreads = 4))
+
+c_hat <- summary(mod_global2)$dispersion
+QAIC <- function(model.candidate, c_hat) {
+  k <- length(model.candidate$coefficients) + 1      # add 1 for the estimate of c_hat
+  (model.candidate$deviance/c_hat) + 2 * k
+}
+QAIC(mod)
