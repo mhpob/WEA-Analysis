@@ -367,37 +367,7 @@ ggplot() +
 
 We're still definitely predicting the presence of sturgeon (lower CI > 0), but we should be cautious at $SSTlag$ > 5ish since we don't have any observations out there and it quickly starts to report way more sturgeon than we recorded.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+Unfortunately, there isn't much interesting here. It might be helpful if we allow an increase in the number of knots. Perhaps that could let some local minima/maxima appear? We should probably think about plowing ahead and I'll run those models in the meantime.
 
 
 
@@ -410,14 +380,14 @@ Not to repeat the long-form explanation/analysis, I'm just going to run through 
 plot(crosspred('Qb2', b_mod, cen = 0), ptype = 'contour')
 ```
 
-Based on this, I'm going to look at lags of 0 and 13.
+Based on this, I'm going to look at lags of 0, 13, nand 28.
 
 ```{r}
 plot(crosspred('Qb2', b_mod, cen = 0),
-     ptype = 'slices', lag = c(0, 13))
+     ptype = 'slices', lag = c(0, 13, 28))
 ```
 
-Yep,looks like there's some positive influence at a lag of 0 and negative influence at lags of 12-16ish. Let's jump straight to the non-centered contour plot on the link scale.
+Yep, looks like there's some positive influence at a lag of 0 and negative influence at lags of 12-16ish. Let's jump straight to the non-centered contour plot on the link scale.
 
 ```{r}
 new_data_lag <- expand.grid(
@@ -427,6 +397,11 @@ new_data_lag <- expand.grid(
 
 # assume constant offset for now
 new_data_lag$d50.b <- exp(median(b_mod$model$`offset(log(d50.b))`))
+
+too_far <- exclude.too.far(new_data_lag$Qb2, new_data_lag$Lb2,
+                           b_mod$model$Qb2, b_mod$model$Lb2, 0.1)
+
+new_data_lag <- new_data_lag[!too_far,]
 
 preds <- predict(b_mod, new_data_lag, type = 'link',
                     exclude = c('s(Site)', 's(Year)', 's(CHLA)', 'te(DOY,Depth)'),
@@ -452,6 +427,11 @@ new_data_lag <- expand.grid(
 # assume constant offset for now
 new_data_lag$d50.b <- exp(median(b_mod$model$`offset(log(d50.b))`))
 
+too_far <- exclude.too.far(new_data_lag$Qb2, new_data_lag$Lb2,
+                           b_mod$model$Qb2, b_mod$model$Lb2, 0.1)
+
+new_data_lag <- new_data_lag[!too_far,]
+
 preds <- predict(b_mod, new_data_lag, type = 'response',
                     exclude = c('s(Site)', 's(Year)', 's(CHLA)', 'te(DOY,Depth)'),
                     newdata.guaranteed = T)
@@ -465,12 +445,12 @@ ggplot(data = new_data_lag, aes(x = Qb2, y = Lb2, z = pred)) +
   theme_minimal()
 ```
 
-Yeah, we're basically predicting zero striped bass across the board. And the previously-noted lags of 0 and 13?
+Yeah, we're basically predicting zero striped bass across the board. And the previously-noted lags of 0, 13, and 28?
 
 ```{r}
 new_data_lag <- expand.grid(
   Qb2 = seq(-7, 10,length.out = 100),
-  Lb2 = c(0, 13)
+  Lb2 = c(0, 13, 28)
 )
 
 new_data_lag <- data.frame(Qb2 = new_data_lag$Qb2,
@@ -484,14 +464,30 @@ preds <- predict(b_mod, new_data_lag, type = 'link', se = T,
               exclude = c('s(Site)', 's(Year)', 's(CHLA)', 'te(DOY,Depth)'),
               newdata.guaranteed = T)
 
+# Find observed values to make a rug
+obs <- data.frame(b_mod$model$Qb2)
+obs <- pivot_longer(obs, cols = starts_with('SST'),
+                    names_to = 'Lb2', values_to = 'Qb2')
+
+# convert lag written as "SST*" to a number
+obs$Lb2 <- as.numeric(gsub('SST', '', obs$Lb2)) - 1
+
+# drop repeated combinations
+obs <- unique(obs[, c('Lb2', 'Qb2')])
+
+
 new_data_lag$pred <- exp(preds$fit)
 new_data_lag$lci <- exp(preds$fit - 1.96 * preds$se.fit)
 new_data_lag$uci <- exp(preds$fit + 1.96 * preds$se.fit)
 
 
-ggplot(data = new_data_lag, aes(x = Qb2, y = pred)) +
-  geom_ribbon(aes(ymin = lci, ymax = uci), fill = 'lightgray') +
-  geom_line() +
+ggplot() +
+  geom_ribbon(data = new_data_lag,
+              aes(x = Qb2, y = pred, ymin = lci, ymax = uci), fill = 'lightgray') +
+  geom_line(data = new_data_lag,
+              aes(x = Qb2, y = pred)) +
+  geom_rug(data = obs[obs$Lb2 %in% c(0, 13, 28),],
+           aes(x = Qb2), alpha = 0.2, sides = 't') +
   scale_y_continuous(expand = c(0, 0), limits = c(0, NA)) +
   scale_x_continuous(expand = c(0, 0)) +
   facet_wrap(~Lb2, scales = 'free_y')+

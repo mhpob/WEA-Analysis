@@ -2,7 +2,9 @@
 title: "Model visualization, but with more knots"
 author: "Mike O'Brien"
 date: "Oct 26, 2020"
-output: html_notebook
+output:
+  pdf_document: default
+  html_notebook: default
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -431,9 +433,4 @@ ggplot(data = new_data) +
 
 
 
-
-## Striped bass
-```{r}
-sb_models <- readRDS('sb_lag_models_moreknots.RDS')
-```
 
