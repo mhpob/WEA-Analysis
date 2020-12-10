@@ -119,7 +119,7 @@ calc_det_freq <- function(data, time_unit){
   }
 
   names(df.data)[names(df.data) == 'Freq'] <- 'success'
-  df.data[, c('date', 'distance', 'trials', 'success', 'fail', 'freq')]
+  df.data[, c('date', 'distance', 'station', 'trials', 'success', 'fail', 'freq')]
 }
 
 array.spl <- lapply(array.spl, calc_det_freq, time_unit = 'day')
@@ -252,27 +252,27 @@ sqrt(fit$sigma2) #stdev
 
 rec.data <- readRDS("data and imports/rec_events.rds")
 rec.data <- rec.data %>%
-  mutate(date.local = .POSIXct(Date.Time, tz = 'America/New_York')) %>%
+  mutate(date.local = .POSIXct(datetime, tz = 'America/New_York')) %>%
   filter(date.local > '2017-12-21',
          date.local < '2018-12-05',
-         grepl('IS2|AN3', Site),
-         grepl('Average [nt]|Tilt', Description)) %>%
-  mutate(array = ifelse(grepl('A', Site), 'MD WEA', 'Inner'),
-         Data = as.numeric(Data),
+         grepl('IS2|AN3', site),
+         grepl('Average [nt]|Tilt', description)) %>%
+  mutate(array = ifelse(grepl('A', site), 'MD WEA', 'Inner'),
+         data = as.numeric(data),
          date = lubridate::date(date.local)) %>%
-  group_by(date, array, Description) %>%
-  summarize(min = min(Data),
-            mean = mean(Data),
-            max = max(Data))
+  group_by(date, array, description) %>%
+  summarize(min = min(data),
+            mean = mean(data),
+            max = max(data))
 
 freq.cast <- reshape2::dcast(data = det.freq, date + array ~ distance,
                              fun.aggregate = mean, value.var = 'freq')
-rec.cast <- reshape2::dcast(rec.data, date + array ~ Description,
+rec.cast <- reshape2::dcast(rec.data, date + array ~ description,
                             fun.aggregate = mean, value.var = 'mean')
 
 env.vars_probs <- full_join(freq.cast, d_probs) %>% full_join(rec.cast)
 env.vars_freq <- det.freq %>%
-  select(date, array, distance, success, fail) %>%
+  select(date, array, station, distance, success, fail) %>%
   full_join(rec.cast)
 # GGally::ggpairs(data = select(env.vars, array, D50, starts_with('Average'),
                               # 'Tilt angle'),
