@@ -253,7 +253,7 @@ sqrt(fit$sigma2) #stdev
 rec.data <- readRDS("data and imports/rec_events.rds")
 rec.data <- rec.data %>%
   mutate(date.local = .POSIXct(datetime, tz = 'America/New_York')) %>%
-  filter(date.local > '2017-12-21',
+  filter(date.local >= '2017-12-21',
          date.local < '2018-12-05',
          grepl('IS2|AN3', site),
          grepl('Average [nt]|Tilt', description)) %>%
@@ -263,12 +263,13 @@ rec.data <- rec.data %>%
   group_by(date, array, description) %>%
   summarize(min = min(data),
             mean = mean(data),
+            median = median(data),
             max = max(data))
 
 freq.cast <- reshape2::dcast(data = det.freq, date + array ~ distance,
                              fun.aggregate = mean, value.var = 'freq')
 rec.cast <- reshape2::dcast(rec.data, date + array ~ description,
-                            fun.aggregate = mean, value.var = 'mean')
+                            fun.aggregate = mean, value.var = 'median')
 
 env.vars_probs <- full_join(freq.cast, d_probs) %>% full_join(rec.cast)
 env.vars_freq <- det.freq %>%
@@ -297,7 +298,7 @@ sst <- sst %>%
   filter(grepl('IS2|AN3', site)) %>%
   mutate(array = ifelse(grepl('I', site), 'Inner', 'MD WEA')) %>%
   group_by(array, date) %>%
-  summarize(sst = mean(sst))
+  summarize(sst = median(sst))
 
 env.vars_probs <- env.vars_wide %>%
   left_join(sst) %>%
@@ -310,18 +311,20 @@ env.vars_freq <- env.vars_freq %>%
 # Wind/wave direction and magnitude
 met.data <- readRDS('data and imports/ndbc_data.rds')
 met.data <- met.data %>%
-  filter(date.time > '2017-12-21',
+  filter(date.time >= '2017-12-21',
          date.time < '2018-12-05',
          station == '44009') %>%
-  mutate(date = lubridate::date(date.time)) %>%
-  group_by(date, station) %>%
-  summarize_all(mean, na.rm = T) %>%
-  select(-date.time)
+  mutate(date = lubridate::date(date.time),
+         met.station = station) %>%
+  select(-date.time, -station) %>%
+  group_by(date, met.station) %>%
+  summarize_all(mean, na.rm = T)
+
 
 env.vars_probs <- left_join(env.vars_probs, met.data)
 env.vars_freq <- left_join(env.vars_freq, met.data)
 # saveRDS(env.vars_probs, 'data and imports/rangetest_logit_d50.RDS')
-saveRDS(env.vars_freq, 'data and imports/rangetest_logit_binary_pt0.RDS')
+saveRDS(env.vars_freq, 'data and imports/rangetest_logit_binary_pt0_medianvars.RDS')
 
 # Correlations of the variables
 env.vars_probs %>%
