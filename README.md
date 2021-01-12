@@ -3,7 +3,9 @@ Fish migration and habitat use in the MD WEA
 
 Analysis associated with funding provied by the US Department of the Interior, Bureau of Ocean Energy Management (BOEM), Office of Renewable Energy Programs, Sterling, VA, under Agreement Number M16AC00008.
 
-Associated publications:
+Other project details and detections are available through [MarineCadastre.gov](https://marinecadastre.gov/espis/#/search/study/100109) and the [Mid-Atlantic Acoustic Telemetry Observing System](https://matos.asascience.com/project/detail/60).
+
+## Associated publications, reports, and data sets:
 
 [Secor D, O’Brien M, Rothermel E, Wiernicki C, Bailey H. 2020.](https://espis.boem.gov/final%20reports/BOEM_2020-030.pdf) Movement and habitat selection by
 migratory fishes within the Maryland Wind Energy Area and adjacent reference sites. Sterling
