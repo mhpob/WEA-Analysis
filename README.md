@@ -1,7 +1,7 @@
 # WEA-Analysis
 Fish migration and habitat use in the MD WEA
 
-Analysis associated with funding provied by the US Department of the Interior, Bureau of Ocean Energy Management (BOEM), Office of Renewable Energy Programs, Sterling, VA, under Agreement Number M16AC00008.
+Analysis associated with funding provided by the US Department of the Interior, Bureau of Ocean Energy Management (BOEM), Office of Renewable Energy Programs, Sterling, VA, under Agreement Number M16AC00008.
 
 Other project details and detections are available through [MarineCadastre.gov](https://marinecadastre.gov/espis/#/search/study/100109) and the [Mid-Atlantic Acoustic Telemetry Observing System](https://matos.asascience.com/project/detail/60).
 
