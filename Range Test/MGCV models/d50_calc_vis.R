@@ -18,7 +18,8 @@ rmvn <- function(n, mu, sig){
 data <- readRDS('data and imports/rangetest_logit_binary_pt0.RDS')
 names(data) <- gsub(' ', '_', tolower(names(data)))
 data$array <- as.factor(gsub(' ', '', data$array))
-data <- data[data$distance > 0,]
+data$date <- as.factor(data$date)
+data <- data[data$distance > 0 & data$distance < 2400,]
 data$freq <- data$success / (data$success + data$fail)
 
 
@@ -26,14 +27,13 @@ data$freq <- data$success / (data$success + data$fail)
 # Import winning model ----
 ##  see "mgcv model selection.R" for selection
 
-mod_int <- gam(cbind(success, fail) ~
-                 distance +
-                 te(average_noise, dt) +
-                 s(array, bs = 're'),
+mod_int_g <- gam(cbind(success, fail) ~
+                 distance + array +
+                 te(average_noise, dt) ,
                family = binomial(),
                data = data,
                method = 'REML',
-               control = gam.control(nthreads = 4))
+               control = gam.control(nthreads = 5))
 
 
 
