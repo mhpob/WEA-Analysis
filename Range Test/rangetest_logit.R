@@ -256,19 +256,20 @@ rec.data <- rec.data %>%
   filter(date.local >= '2017-12-21',
          date.local < '2018-12-05',
          grepl('IS2|AN3', site),
-         grepl('Average [nt]|Tilt', description)) %>%
+         grepl('Average [nt]|Tilt|^Pings|Syncs', description)) %>%
   mutate(array = ifelse(grepl('A', site), 'MD WEA', 'Inner'),
          data = as.numeric(data),
-         date = lubridate::date(date.local)) %>%
-  group_by(date, array, description) %>%
-  summarize(min = min(data),
-            mean = mean(data),
-            median = median(data),
-            max = max(data))
+         date = lubridate::date(date.local),
+         station = site) %>%
+  group_by(date, station, array, description) %>%
+  summarize(min = min(data, na.rm = T),
+            mean = mean(data, na.rm = T),
+            median = median(data, na.rm = T),
+            max = max(data, na.rm = T))
 
 freq.cast <- reshape2::dcast(data = det.freq, date + array ~ distance,
                              fun.aggregate = mean, value.var = 'freq')
-rec.cast <- reshape2::dcast(rec.data, date + array ~ description,
+rec.cast <- reshape2::dcast(rec.data, date + array + station ~ description,
                             fun.aggregate = mean, value.var = 'median')
 
 env.vars_probs <- full_join(freq.cast, d_probs) %>% full_join(rec.cast)
@@ -296,9 +297,10 @@ ggplot(data = env.vars, aes(x = `Average noise`, y = D50, color = array)) +
 sst <- readRDS('data and imports/sst.rds')
 sst <- sst %>%
   filter(grepl('IS2|AN3', site)) %>%
-  mutate(array = ifelse(grepl('I', site), 'Inner', 'MD WEA')) %>%
-  group_by(array, date) %>%
-  summarize(sst = median(sst))
+  mutate(array = ifelse(grepl('I', site), 'Inner', 'MD WEA'),
+         station = site) %>%
+  group_by(station, array, date) %>%
+  summarize(sst = median(sst, na.rm = T))
 
 env.vars_probs <- env.vars_wide %>%
   left_join(sst) %>%
@@ -318,13 +320,13 @@ met.data <- met.data %>%
          met.station = station) %>%
   select(-date.time, -station) %>%
   group_by(date, met.station) %>%
-  summarize_all(mean, na.rm = T)
+  summarize_all(median, na.rm = T)
 
 
 env.vars_probs <- left_join(env.vars_probs, met.data)
 env.vars_freq <- left_join(env.vars_freq, met.data)
 # saveRDS(env.vars_probs, 'data and imports/rangetest_logit_d50.RDS')
-saveRDS(env.vars_freq, 'data and imports/rangetest_logit_binary_pt0_medianvars.RDS')
+saveRDS(env.vars_freq, 'data and imports/rangetest_median_sitespec.RDS')
 
 # Correlations of the variables
 env.vars_probs %>%
