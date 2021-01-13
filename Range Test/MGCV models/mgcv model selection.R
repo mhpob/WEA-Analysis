@@ -101,6 +101,51 @@ cv <- function(data, model, k, repeats = 1, seed = NULL){
 
 }
 
+
+
+qbn_hack <- function (link = "logit") {
+  linktemp <- substitute(link)
+  if (!is.character(linktemp))
+    linktemp <- deparse(linktemp)
+  okLinks <- c("logit", "probit", "cloglog",
+               "cauchit", "log")
+  family <- "quasibinomial"
+  if (linktemp %in% okLinks)
+    stats <- make.link(linktemp)
+  else if (is.character(link)) {
+    stats <- make.link(link)
+    linktemp <- link
+  }
+  else {
+    if (inherits(link, "link-glm")) {
+      stats <- link
+      if (!is.null(stats$name))
+        linktemp <- stats$name
+    }
+    else {
+      stop(gettextf("link \"%s\" not available for %s family; available links are %s",
+                    linktemp, family, paste(sQuote(okLinks), collapse = ", ")),
+           domain = NA)
+    }
+  }
+  aic <- function(y, n, mu, wt, dev) {
+    m <- if (any(n > 1))
+      n
+    else wt
+    -2 * sum(ifelse(m > 0, (wt/m), 0) * dbinom(round(m *
+                                                       y), round(m), mu, log = TRUE))
+  }
+  structure(list(family = family, link = linktemp, linkfun = stats$linkfun,
+                 linkinv = stats$linkinv, variance = function(mu) mu *
+                   (1 - mu), dev.resids = function(y, mu, wt) .Call(stats:::C_binomial_dev_resids,
+                                                                    y, mu, wt), aic = aic,
+                 mu.eta = stats$mu.eta, initialize = stats:::binomInitialize(family),
+                 validmu = function(mu) all(is.finite(mu)) && all(0 <
+                                                                    mu & mu < 1), valideta = stats$valideta), class = "family")
+}
+
+
+
 QAIC <- function(model, c_hat){
   k <- length(model$coefficients) + 1      # add 1 for the estimate of c_hat
   (model$deviance / c_hat) + 2 * k
@@ -109,63 +154,86 @@ QAIC <- function(model, c_hat){
 
 
 # Data ----
-data <- readRDS('data and imports/rangetest_logit_binary_pt0.RDS')
+data <- readRDS('data and imports/rangetest_median_sitespec.RDS')
+data <- data[data$distance > 0 & data$distance < 2400,]
 names(data) <- gsub(' ', '_', tolower(names(data)))
 data$array <- as.factor(gsub(' ', '', data$array))
+data$station <- as.factor(data$station)
 data$freq <- data$success / (data$success + data$fail)
-data <- data[data$distance > 0 & data$distance < 2400,]
+data$wgt <- (data$success + data$fail) / mean((data$success + data$fail))
+data$date <- as.factor(data$date)
+# data$cp <- ifelse(as.Date(data$date) <= '2018-05-05' | as.Date(data$date) >= '2018-09-07', F, T)
+
+data <- data[order(data$station, data$distance, data$date),]
+data$ts.start <- ifelse(data$date == '2017-12-21' |
+                          (data$date == '2018-08-08' & data$station == 'AN3' & data$distance == 800) |
+                          (data$date == '2018-08-08' & data$station == 'AN3_250' & data$distance == 550), T, F)
 
 
+# Check global model for evidence of over/underdispersion
+m_gq <- bam(freq ~
+                distance +
+                s(station, array, bs = 're') +
+                s(dt, k = 40) +
+                s(average_temperature, k = 40) +
+                s(average_noise, k = 40) +
+                ti(average_noise, average_temperature, k = c(10, 10)) +
+                ti(average_noise, dt, k = c(10, 10)),
+              family = quasibinomial(),
+              data = data,
+              weights = data$wgt,
+              discrete = T)
 
-# Overdispersion ----
-## Fit global model it see if data is overdispersed.
-## Use quasibinomial family since it returns the dispersion
-mod_global <- gam(cbind(success, fail) ~
-                         distance + array +
-                         s(dt) +
-                         s(average_temperature) +
-                         s(average_noise) +
-                         ti(average_noise, average_temperature) +
-                         ti(average_noise, dt),
-                       family = quasibinomial(),
-                       data = data,
-                       method = 'REML',
-                       control = gam.control(nthreads = 4))
+summary(m_gq)$dispersion
+# 0.1637824
+# Evidence of underdispersion. See if AR term helps
 
-## c-hat:
-c_hat <- summary(mod_global)$dispersion
-# [1] 2.498263
+# Temporal autocorrelation ----
+rho_guess <- acf(resid(m_gq), plot = F)$acf[2]
+m_gq_ar <- bam(freq ~ distance + s(station, array, bs = 're') +
+                 s(dt, k = 40) +
+                 s(average_temperature, k = 40) +
+                 s(average_noise, k = 40) +
+                 ti(average_noise, average_temperature, k = c(10, 10)) +
+                 ti(average_noise, dt, k = c(10, 10)),
+               family = quasibinomial(),
+               data = data,
+               weights = data$wgt,
+               discrete = T,
+               rho = rho_guess,
+               AR.start = data$ts.start)
 
-## c-hat estimated to be >1, so overdispersed. Moving forward with quasibinomial
-##  family and QAIC as outlined in functions section
-
-
+summary(m_gq_ar)$dispersion
+# Doesn't really, but autocorrleation is apparent so it's definitely needed
 
 # ~ Distance ----
 ##  Linear response to distance only (Null model)
 ##  There are some convergence issues when fitting as a GAM, so fitting this as
 ##    a GLM.
-mod_d <- glm(freq ~
-               distance + array,
-             family = quasibinomial(),
-             data = data)
+m <- bam(freq~ distance + s(station, array, bs = 're'),
+           family = qbn_hack(),
+           data = data,
+           weights = data$wgt,
+           discrete = T,
+           rho = rho_guess,
+           AR.start = data$ts.start)
 
 ##  Calculate adj-R^2 and dev expl to compare with GAM fits
-summary_func <- function(model){
-  w <- model$prior.weights
-  nobs <- nrow(model$model)
-  mean.y <- sum(w * model$y) / sum(w)
-  residual.df <- length(model$y) - sum(model$edf)
+# summary_func <- function(model){
+#   w <- model$prior.weights
+#   nobs <- nrow(model$model)
+#   mean.y <- sum(w * model$y) / sum(w)
+#   residual.df <- length(model$y) - sum(model$edf)
+#
+#   data.frame(
+#     adjR2 = 1 - var(w * (as.numeric(model$y) - model$fitted.values)) *
+#       (nobs - 1) / (var(w * (as.numeric(model$y) - mean.y)) * model$df.residual),
+#     dev.expl = (model$null.deviance - model$deviance) / model$null.deviance,
+#     qaic = QAIC(mod_d, c_hat)
+#   )
+# }
 
-  data.frame(
-    adjR2 = 1 - var(w * (as.numeric(model$y) - model$fitted.values)) *
-      (nobs - 1) / (var(w * (as.numeric(model$y) - mean.y)) * model$df.residual),
-    dev.expl = (model$null.deviance - model$deviance) / model$null.deviance,
-    qaic = QAIC(mod_d, c_hat)
-  )
-}
-
-summary_func(mod_d)
+# summary_func(mod_d)
 ##  5-fold cross-validation
 kf_d <- cv(data, mod_d, k = 5, repeats = 5)
 colMeans(kf_d[, grepl('test', names(kf_d))]) * 100
@@ -174,13 +242,14 @@ apply(kf_d[, grepl('test', names(kf_d))], 2, sd) * 100
 
 # ~ Distance + s(noise) ----
 ## Nonlinear response to noise
-mod_dn <- gam(freq ~
-                distance + array +
-                s(average_noise, k = 12),
-              family = quasibinomial(),
-              data = data,
-              method = 'REML',
-              control = gam.control(nthreads = 4))
+m_n <- bam(freq ~ distance + s(station, array, bs = 're') +
+                s(average_noise, k = 40),
+           family = quasibinomial(),
+           data = data,
+           weights = data$wgt,
+           discrete = T,
+           rho = rho_guess,
+           AR.start = data$ts.start)
 
 
 ##  5-fold cross-validation
@@ -192,14 +261,15 @@ apply(kf_dn[, grepl('test', names(kf_dn))], 2, sd) * 100
 
 # ~ Distance + s(noise) + s(dt) ----
 ## Nonlinear response to noise and stratification
-mod_dndt <- gam(freq ~
-                  distance + array +
-                  s(average_noise) +
-                  s(dt),
-                family = quasibinomial(),
-                data = data,
-                method = 'REML',
-                control = gam.control(nthreads = 4))
+m_ndt <- bam(freq ~ distance + s(station, array, bs = 're') +
+               s(average_noise, k = 40) +
+               s(dt, k = 40),
+             family = qbn_hack(),
+             data = data,
+             weights = data$wgt,
+             discrete = T,
+             rho = rho_guess,
+             AR.start = data$ts.start)
 
 
 ##  5-fold cross-validation
@@ -211,15 +281,25 @@ apply(kf_dndt[, grepl('test', names(kf_dndt))], 2, sd) * 100
 
 # ~ Distance + te(noise, dt)----
 ## Nonlinear response to noise, modulated by stratification
-mod_dndt_int <- gam(freq ~
-                      distance + array +
+m_ndti <- bam(freq ~ distance + s(station, array, bs = 're') +
+                s(average_noise, k = 40) +
+                s(dt, k = 40) +
+                ti(average_noise, dt, k = c(10, 10)),
+              family = qbn_hack(),
+              data = data,
+              weights = data$wgt,
+              discrete = T,
+              rho = rho_guess,
+              AR.start = data$ts.start)
+
+mod<- bam(cbind(success, fail) ~
+                      distance + s(array, date, bs = 're') +
                       s(average_noise) +
                       s(dt) +
                       ti(average_noise, dt),
-                    family = quasibinomial(),
+                    family = binomial(),
                     data = data,
-                    method = 'REML',
-                    control = gam.control(nthreads = 4))
+                    discrete = T)
 
 
 ##  5-fold cross-validation
