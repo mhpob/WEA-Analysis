@@ -96,9 +96,45 @@ cv <- function(data, model, k, repeats = 1, seed = NULL){
 
 
 
-QAIC <- function(model, c_hat){
-  k <- length(model$coefficients) + 1      # add 1 for the estimate of c_hat
-  (model$deviance / c_hat) + 2 * k
+qbn_hack <- function (link = "logit") {
+  linktemp <- substitute(link)
+  if (!is.character(linktemp))
+    linktemp <- deparse(linktemp)
+  okLinks <- c("logit", "probit", "cloglog",
+               "cauchit", "log")
+  family <- "quasibinomial"
+  if (linktemp %in% okLinks)
+    stats <- make.link(linktemp)
+  else if (is.character(link)) {
+    stats <- make.link(link)
+    linktemp <- link
+  }
+  else {
+    if (inherits(link, "link-glm")) {
+      stats <- link
+      if (!is.null(stats$name))
+        linktemp <- stats$name
+    }
+    else {
+      stop(gettextf("link \"%s\" not available for %s family; available links are %s",
+                    linktemp, family, paste(sQuote(okLinks), collapse = ", ")),
+           domain = NA)
+    }
+  }
+  aic <- function(y, n, mu, wt, dev) {
+    m <- if (any(n > 1))
+      n
+    else wt
+    -2 * sum(ifelse(m > 0, (wt/m), 0) * dbinom(round(m *
+                                                       y), round(m), mu, log = TRUE))
+  }
+  structure(list(family = family, link = linktemp, linkfun = stats$linkfun,
+                 linkinv = stats$linkinv, variance = function(mu) mu *
+                   (1 - mu), dev.resids = function(y, mu, wt) .Call(stats:::C_binomial_dev_resids,
+                                                                    y, mu, wt), aic = aic,
+                 mu.eta = stats$mu.eta, initialize = stats:::binomInitialize(family),
+                 validmu = function(mu) all(is.finite(mu)) && all(0 <
+                                                                    mu & mu < 1), valideta = stats$valideta), class = "family")
 }
 
 
@@ -124,31 +160,39 @@ seed <- 2000031
 
 # Check global model for evidence of over/underdispersion
 m_gq <- bam(freq ~
-                distance +
-                s(station, array, bs = 're') +
-                s(dt, k = 40) +
-                s(average_temperature, k = 40) +
-                s(average_noise, k = 40) +
-                ti(average_noise, average_temperature, k = c(10, 10)) +
-                ti(average_noise, dt, k = c(10, 10)),
-              family = quasibinomial(),
-              data = data,
-              weights = data$wgt,
-              discrete = T)
+              distance +
+              s(station, bs = 're') +
+              s(dt, k = 40, m = 2) +
+              s(dt, array, bs = 'fs', k = 40, m = 2) +
+              s(average_temperature, k = 40, m = 2) +
+              s(average_temperature, array, bs = 'fs', k = 40, m = 2) +
+              s(average_noise, k = 40, m = 2) +
+              s(average_noise, array, bs = 'fs', k = 40, m = 2) +
+              ti(average_noise, average_temperature, k = c(10, 10)) +
+              ti(average_noise, dt, k = c(10, 10)),
+            family = qbn_hack(),
+            data = data,
+            weights = data$wgt,
+            discrete = T)
 
 summary(m_gq)$dispersion
-# 0.1637824
+# 0.1623854
 # Evidence of underdispersion. See if AR term helps
 
 # Temporal autocorrelation ----
 rho_guess <- acf(resid(m_gq), plot = F)$acf[2]
-m_gq_ar <- bam(freq ~ distance + s(station, array, bs = 're') +
-                 s(dt, k = 40) +
-                 s(average_temperature, k = 40) +
-                 s(average_noise, k = 40) +
+m_gq_ar <- bam(freq ~
+                 distance +
+                 s(station, bs = 're') +
+                 s(dt, k = 40, m = 2) +
+                 s(dt, array, bs = 'fs', k = 40, m = 2) +
+                 s(average_temperature, k = 40, m = 2) +
+                 s(average_temperature, array, bs = 'fs', k = 40, m = 2) +
+                 s(average_noise, k = 40, m = 2) +
+                 s(average_noise, array, bs = 'fs', k = 40, m = 2) +
                  ti(average_noise, average_temperature, k = c(10, 10)) +
                  ti(average_noise, dt, k = c(10, 10)),
-               family = quasibinomial(),
+               family = qbn_hack(),
                data = data,
                weights = data$wgt,
                discrete = T,
@@ -162,8 +206,10 @@ summary(m_gq_ar)$dispersion
 ##  Linear response to distance only (Null model)
 ##  There are some convergence issues when fitting as a GAM, so fitting this as
 ##    a GLM.
-m <- bam(freq ~ distance + s(station, array, bs = 're'),
-           family = quasibinomial(),
+m <- bam(freq ~
+           distance +
+           s(station, bs = 're'),
+           family = qbn_hack(),
            data = data,
            weights = data$wgt,
            discrete = T,
@@ -179,9 +225,12 @@ apply(kf_d[, grepl('test', names(kf_d))], 2, sd) * 100
 
 # ~ Distance + s(noise) ----
 ## Nonlinear response to noise
-m_n <- bam(freq ~ distance + s(station, array, bs = 're') +
-             s(average_noise, k = 40),
-           family = quasibinomial(),
+m_n <- bam(freq ~
+             distance +
+             s(station, bs = 're') +
+             s(average_noise, k = 40, m = 2) +
+             s(average_noise, array, bs = 'fs', k = 40, m = 2),
+           family = qbn_hack(),
            data = data,
            weights = data$wgt,
            discrete = T,
@@ -198,10 +247,14 @@ apply(kf_n[, grepl('test', names(kf_n))], 2, sd) * 100
 
 # ~ Distance + s(noise) + s(dt) ----
 ## Nonlinear response to noise and stratification
-m_ndt <- bam(freq ~ distance + s(station, array, bs = 're') +
-               s(average_noise, k = 40) +
-               s(dt, k = 40),
-             family = quasibinomial(),
+m_ndt <- bam(freq ~
+               distance +
+               s(station, bs = 're') +
+               s(average_noise, k = 40, m = 2) +
+               s(average_noise, array, bs = 'fs', k = 40, m = 2) +
+               s(dt, k = 40, m = 2) +
+               s(dt, array, bs = 'fs', k = 40, m = 2),
+             family = qbn_hack(),
              data = data,
              weights = data$wgt,
              discrete = T,
@@ -218,11 +271,15 @@ apply(kf_ndt[, grepl('test', names(kf_ndt))], 2, sd) * 100
 
 # ~ Distance + te(noise, dt)----
 ## Nonlinear response to noise, modulated by stratification
-m_ndti <- bam(freq ~ distance + s(station, array, bs = 're') +
-                s(average_noise, k = 40) +
-                s(dt, k = 40) +
+m_ndti <- bam(freq ~
+                distance +
+                s(station, bs = 're') +
+                s(dt, k = 40, m = 2) +
+                s(dt, array, bs = 'fs', k = 40, m = 2) +
+                s(average_noise, k = 40, m = 2) +
+                s(average_noise, array, bs = 'fs', k = 40, m = 2) +
                 ti(average_noise, dt, k = c(10, 10)),
-              family = quasibinomial(),
+              family = qbn_hack(),
               data = data,
               weights = data$wgt,
               discrete = T,
@@ -239,9 +296,12 @@ apply(kf_ndti[, grepl('test', names(kf_ndti))], 2, sd) * 100
 
 # ~ Distance + s(dt) ----
 ## Nonlinear response to stratification
-m_dt <- bam(freq ~ distance + s(station, array, bs = 're') +
-              s(dt, k = 40),
-            family = quasibinomial(),
+m_dt <- bam(freq ~
+              distance +
+              s(station, bs = 're') +
+              s(dt, k = 40, m = 2) +
+              s(dt, array, bs = 'fs', k = 40, m = 2),
+            family = qbn_hack(),
             data = data,
             weights = data$wgt,
             discrete = T,
@@ -257,10 +317,14 @@ apply(kf_dt[, grepl('test', names(kf_dt))], 2, sd) * 100
 
 # ~ Distance + s(noise) + s(bwt) ----
 ## Nonlinear response to noise and near-receiver temperature
-m_nbt <- bam(freq ~ distance + s(station, array, bs = 're') +
-               s(average_noise, k = 40) +
-               s(average_temperature, k = 40),
-             family = quasibinomial(),
+m_nbt <- bam(freq ~
+               distance +
+               s(station, bs = 're') +
+               s(average_noise, k = 40, m = 2) +
+               s(average_noise, array, bs = 'fs', k = 40, m = 2) +
+               s(average_temperature, k = 40, m = 2) +
+               s(average_temperature, array, bs = 'fs', k = 40, m = 2),
+             family = qbn_hack(),
              data = data,
              weights = data$wgt,
              discrete = T,
@@ -277,11 +341,15 @@ apply(kf_nbt[, grepl('test', names(kf_nbt))], 2, sd) * 100
 
 # ~ Distance + te(noise, bwt)----
 ## Nonlinear response to noise, modulated by near-receiver temperature
-m_nbti <- bam(freq ~ distance + s(station, array, bs = 're') +
-                s(average_noise, k = 40) +
-                s(average_temperature, k = 40) +
+m_nbti <- bam(freq ~
+                distance +
+                s(station, bs = 're') +
+                s(average_noise, k = 40, m = 2) +
+                s(average_noise, array, bs = 'fs', k = 40, m = 2) +
+                s(average_temperature, k = 40, m = 2) +
+                s(average_temperature, array, bs = 'fs', k = 40, m = 2) +
                 ti(average_noise, average_temperature, k = c(10, 10)),
-              family = quasibinomial(),
+              family = qbn_hack(),
               data = data,
               weights = data$wgt,
               discrete = T,
@@ -298,9 +366,12 @@ apply(kf_nbti[, grepl('test', names(kf_nbti))], 2, sd) * 100
 
 # ~ Distance + s(bwt) ----
 ## Nonlinear response to near-receiver temperature
-m_bt <- bam(freq ~ distance + s(station, array, bs = 're') +
-              s(average_temperature, k = 40),
-            family = quasibinomial(),
+m_bt <- bam(freq ~
+              distance +
+              s(station, bs = 're') +
+              s(average_temperature, k = 40, m = 2) +
+              s(average_temperature, array, bs = 'fs', k = 40, m = 2),
+            family = qbn_hack(),
             data = data,
             weights = data$wgt,
             discrete = T,
@@ -319,13 +390,13 @@ apply(kf_bt[, grepl('test', names(kf_bt))], 2, sd) * 100
 ic <- data.frame(
   model = c('m', 'm_n', 'm_ndt', 'm_ndti', 'm_dt', 'm_nbt',
             'm_nbti', 'm_bt'),
-  QAIC = sapply(list(m, m_n, m_ndt, m_ndti,
+  AIC = sapply(list(m, m_n, m_ndt, m_ndti,
                      m_dt, m_nbt, m_nbti, m_bt),
-                QAIC, c_hat = summary(m_gq_ar)$dispersion)
+                AIC)
 )
 
-ic$dQAIC <- ic$QAIC - min(ic$QAIC)
-ic$wQAIC <- exp(-0.5 * ic$dQAIC)
-ic$wQAIC <- ic$wQAIC / sum(ic$wQAIC)
-ic <- ic[order(ic$dQAIC),]
+ic$dAIC <- ic$AIC - min(ic$AIC)
+ic$wAIC <- exp(-0.5 * ic$dAIC)
+ic$wAIC <- ic$wAIC / sum(ic$wAIC)
+ic <- ic[order(ic$dAIC),]
 ic
