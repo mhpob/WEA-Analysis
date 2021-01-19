@@ -15,25 +15,36 @@ rmvn <- function(n, mu, sig){
 
 
 # Import data ----
-data <- readRDS('data and imports/rangetest_logit_binary_pt0.RDS')
+data <- readRDS('data and imports/rangetest_median_sitespec.RDS')
+data <- data[data$distance > 0 & data$distance < 2400,]
 names(data) <- gsub(' ', '_', tolower(names(data)))
 data$array <- as.factor(gsub(' ', '', data$array))
-data$date <- as.factor(data$date)
-data <- data[data$distance > 0 & data$distance < 2400,]
+data$station <- as.factor(data$station)
 data$freq <- data$success / (data$success + data$fail)
+data$wgt <- (data$success + data$fail) / mean((data$success + data$fail))
+data$date <- as.factor(data$date)
+
+data <- data[order(data$station, data$distance, data$date),]
+data$ts.start <- ifelse(data$date == '2017-12-21' |
+                          (data$date == '2018-08-08' & data$station == 'AN3' & data$distance == 800) |
+                          (data$date == '2018-08-08' & data$station == 'AN3_250' & data$distance == 550), T, F)
 
 
 
 # Import winning model ----
 ##  see "mgcv model selection.R" for selection
 
-mod_int_g <- gam(cbind(success, fail) ~
-                 distance + array +
-                 te(average_noise, dt) ,
-               family = binomial(),
-               data = data,
-               method = 'REML',
-               control = gam.control(nthreads = 5))
+m_ndt <- bam(freq ~ distance + s(station, bs = 're') +
+               s(average_noise, k = 40, m = 2) +
+               s(dt, k = 40, m = 2) +
+               s(average_noise, array, k = 40, m = 2, bs = 'fs') +
+               s(dt, array, k = 40, m = 2, bs = 'fs'),
+             family = binomial(),
+             data = data,
+             weights = data$wgt,
+             discrete = T,
+             rho = 0.1623854,
+             AR.start = data$ts.start)
 
 
 
@@ -51,11 +62,11 @@ new_data <- unique(new_data, by = c('date', 'array'))
 
 ## Use the posterior distribution to simulate smooths
 ### Calculate unconditional variance-covariance matrix
-vcm <- vcov(mod_int, unconditional = T)
+vcm <- vcov(m_ndt, unconditional = T)
 
 
 ### Simulate parameters (x10000)
-sims <- rmvn(10000, mu = coef(mod_int), sig = vcm)
+sims <- rmvn(10000, mu = coef(m_ndt), sig = vcm)
 
 
 
@@ -73,7 +84,8 @@ sims <- rmvn(10000, mu = coef(mod_int), sig = vcm)
 # unconditional = T corrects covariance matrix so that it's not conditional on the
 # smooth being correct
 
-lpm <- predict(mod_int, new_data, type = 'lpmatrix')
+lpm <- predict(m_ndt, new_data, type = 'lpmatrix',
+               exclude = c('s(station)', 's(dt,array)', 's(average_noise,array)'))
 
 # Note that since we didn't specify knots in the tensor product, mgcv defaulted
 #   to (5 ^ 2) - 1 knots.
@@ -95,7 +107,7 @@ colnames(lpm)
 # -c(2, 27, 28) removes the distance coefficients and influence of the random effect
 d50_sim <- data.table(
   (log10(0.5 / (1 - 0.5)) -
-              (lpm[, -c(2, 27, 28)] %*% t(sims)[-c(2, 27, 28),])) /
+              (lpm[, -c(2)] %*% t(sims)[-c(2),])) /
   t(sims)[2,]
 )
 
@@ -110,11 +122,13 @@ d50 <- data.frame(new_data, d50)
 
 # Vis ----
 ggplot(data = d50) +
-  geom_ribbon(aes(x = date, ymin = d50_lci, ymax = d50_uci, fill = array),
+  geom_ribbon(aes(x = as.Date(date), ymin = d50_lci, ymax = d50_uci),
               alpha = 0.5) +
-  geom_line(aes(x = date, y = d50_med, color = array)) +
+  geom_line(aes(x = as.Date(date), y = d50_med)) +
+  facet_wrap(~array, ncol = 1)+
   labs(x = NULL, y = 'Distance at 50% detection probability (m)') +
-  ylim(0, 1100)+
+  coord_cartesian(ylim=c(0, 1700))+
+  # ylim(0, 1100)+
   theme_bw()
 
 
@@ -122,18 +136,20 @@ ggplot(data = d50) +
 new_inn <- new_data[array == 'Inner']
 new_wea <- new_data[array == 'MDWEA']
 
-lpm_inn <- predict(mod_int, new_inn, type = 'lpmatrix', unconditional = T)
-lpm_wea <- predict(mod_int, new_wea, type = 'lpmatrix', unconditional = T)
+lpm_inn <- predict(m_ndt, new_inn, type = 'lpmatrix', unconditional = T,
+                   exclude = c('s(station)', 's(average_noise,array)', 's(dt,array)'))
+lpm_wea <- predict(m_ndt, new_wea, type = 'lpmatrix', unconditional = T,
+                   exclude = c('s(station)', 's(average_noise,array)', 's(dt,array)'))
 
 
 d50_sim_inn <- data.table(
   (log10(0.5 / (1 - 0.5)) -
-     (lpm_inn[, -c(2, 27, 28)] %*% t(sims)[-c(2, 27, 28),])) /
+     (lpm_inn[, -c(2)] %*% t(sims)[-c(2),])) /
     t(sims)[2,]
 )
 d50_sim_wea <- data.table(
   (log10(0.5 / (1 - 0.5)) -
-     (lpm_wea[, -c(2, 27, 28)] %*% t(sims)[-c(2, 27, 28),])) /
+     (lpm_wea[, -c(2)] %*% t(sims)[-c(2),])) /
     t(sims)[2,]
 )
 
@@ -151,13 +167,13 @@ d50 <- data.frame(date = unique(new_data$date), d50)
 
 
 # Vis ----
-d50_agg_plot <-
+# d50_agg_plot <-
   ggplot(data = d50) +
-  geom_ribbon(aes(x = date, ymin = d50_lci, ymax = d50_uci),
+  geom_ribbon(aes(x = as.Date(date), ymin = d50_lci, ymax = d50_uci),
               fill = 'gray', size = 1) +
-  geom_line(aes(x = date, y = d50_med)) +
+  geom_line(aes(x = as.Date(date), y = d50_med)) +
   labs(x = NULL, y = 'Distance at 50% detection probability (m)') +
-  scale_y_continuous(limits=c(0, 1100), expand = c(0, 0)) +
+  coord_cartesian(ylim=c(0, 1250), expand = F) +
   scale_x_date(date_breaks = 'month', date_labels = '%b', expand = c(0, 0)) +
   theme_bw() +
   theme(axis.text = element_text(size = 12),
@@ -204,7 +220,7 @@ d50_ran <- data.frame(d50 = c(d50_inn, d50_wea),
 ##    Note: need JAGS and rjags installed to run mcp.
 
 d50 <- fread('range test/mgcv models/d50_20200803.csv')
-d50 <- d50[, n_date := as.numeric(date) - as.numeric(min(date))]
+d50 <- setDT(d50)[, n_date := as.numeric(as.Date(date)) - as.numeric(min(as.Date(date)))]
 
 
 
@@ -214,7 +230,7 @@ cp_d50 <- cpt.meanvar(d50$d50_med,
                          pen.value = c(15, 500))
 
 plot(cp_d50, diagnostic = T)
-abline(v = 2, col = 'blue')
+abline(v = 1, col = 'blue')
 ### Two change points found.
 
 
