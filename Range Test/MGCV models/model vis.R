@@ -23,33 +23,49 @@ data$ts.start <- ifelse(data$date == '2017-12-21' |
 # Import winning model ----
 ##  see "mgcv model selection.R" for selection
 
-m_ndt <- bam(freq ~ distance + s(station, array, bs = 're') +
-               s(average_noise, k = 40) +
-               s(dt, k = 40),
-             family = quasibinomial(),
+m_ndt <- bam(freq ~ distance + s(station, bs = 're') +
+               # s(array, bs = 're') +
+               s(average_noise, k = 40, m = 2) +
+               s(dt, k = 40, m = 2) +
+               s(average_noise, array, k = 40, m = 2, bs = 'fs') +
+               s(dt, array, k = 40, m = 2, bs = 'fs'),
+             family = binomial(),
              data = data,
              weights = data$wgt,
              discrete = T,
-             rho = 0.466396825956338,
+             rho = 0.165,
              AR.start = data$ts.start)
 
-med_noise <- unique(data.table(data), by = c('date', 'station'))[, median(average_noise)]
+
+## Median noise ----
+med_noise <- unique(data.table(data), by = c('date', 'station'))[
+  , .(median = median(average_noise)), by = 'array']
 
 
-newdata <- data.frame(
-  array = 'MDWEA',
-  station = 'AN3',
-  dt = seq(min(data$dt), max(data$dt), length.out = 100),
-  average_noise = med_noise,
-  distance = 800
+newdata <- rbind(
+  data.frame(
+    array = 'Inner',
+    station = 'IS2',
+    dt = seq(min(data[data$array == 'Inner',]$dt), max(data[data$array == 'Inner',]$dt), length.out = 100),
+    average_noise = med_noise[array == 'Inner', median],
+    distance = 800
+  ),
+  data.frame(
+    array = 'MDWEA',
+    station = 'AN3',
+    dt = seq(min(data[data$array == 'MDWEA',]$dt), max(data[data$array == 'MDWEA',]$dt), length.out = 100),
+    average_noise = med_noise[array == 'Inner', median],
+    distance = 800
+  )
 )
+
 
 preds <- predict(m_ndt,
                  newdata = newdata,
                  type = 'link',
                  se.fit = T,
                  # terms = 's(dt)')
-                 exclude = 's(array,station)')
+                 exclude = c('s(station)'))
 
 newdata$pred <- m_ndt$family$linkinv(preds$fit)
 newdata$lci <- m_ndt$family$linkinv(preds$fit - 1.96 * preds$se.fit)
@@ -57,14 +73,65 @@ newdata$uci <- m_ndt$family$linkinv(preds$fit + 1.96 * preds$se.fit)
 
 
 
-
 ggplot(data = newdata) +
-  geom_ribbon(aes(x = dt, ymin = lci, ymax = uci), fill = 'gray') +
-  geom_line(aes(x=dt, y = pred)) +
-  geom_rug(data = unique(data.table(data), by = 'dt'),
-           aes(x = dt)) +
+  geom_ribbon(aes(x = dt, ymin = lci, ymax = uci, fill = array), alpha = 0.8) +
+  geom_line(aes(x = dt, y = pred, group = array), color = 'white') +
+  geom_rug(data = unique(data.table(data)[array == 'Inner',], by = 'dt'),
+           aes(x = dt, color = array), alpha = 0.5) +
+  geom_rug(data = unique(data.table(data)[array == 'MDWEA',], by = 'dt'),
+           aes(x = dt, color = array), sides = 't', alpha = 0.5) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0), limits = c(0, 1)) +
+  scale_fill_manual(values = c('#D55E00', '#0072B2')) +
+  labs(x = 'ΔT (°C)', y = 'Predicted detectability') +
+  theme_bw() +
+  theme(axis.text = element_text(size = 10),
+        axis.title = element_text(size = 12),
+        plot.margin = unit(c(0.05, 0.8, 0.05, 0.1), "cm"))
+
+
+
+## High noise ----
+
+newdata <- rbind(
+  data.frame(
+    array = 'Inner',
+    station = 'IS2',
+    dt = seq(min(data[data$array == 'Inner',]$dt), max(data[data$array == 'Inner',]$dt), length.out = 100),
+    average_noise = 300,
+    distance = 800
+  ),
+  data.frame(
+    array = 'MDWEA',
+    station = 'AN3',
+    dt = seq(min(data[data$array == 'MDWEA',]$dt), max(data[data$array == 'MDWEA',]$dt), length.out = 100),
+    average_noise = 300,
+    distance = 800
+  )
+)
+
+preds <- predict(m_ndt,
+                 newdata = newdata,
+                 type = 'link',
+                 se.fit = T,
+                 # terms = 's(dt)')
+                 exclude = c('s(station)'))
+
+newdata$pred <- m_ndt$family$linkinv(preds$fit)
+newdata$lci <- m_ndt$family$linkinv(preds$fit - 1.96 * preds$se.fit)
+newdata$uci <- m_ndt$family$linkinv(preds$fit + 1.96 * preds$se.fit)
+
+
+ggplot(data = newdata) +
+  geom_ribbon(aes(x = dt, ymin = lci, ymax = uci, fill = array), alpha = 0.8) +
+  geom_line(aes(x = dt, y = pred, group = array), color = 'white') +
+  geom_rug(data = unique(data.table(data)[array == 'Inner',], by = 'dt'),
+           aes(x = dt, color = array), alpha = 0.5) +
+  geom_rug(data = unique(data.table(data)[array == 'MDWEA',], by = 'dt'),
+           aes(x = dt, color = array), sides = 't', alpha = 0.5) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 1)) +
+  scale_fill_manual(values = c('#D55E00', '#0072B2')) +
   labs(x = 'ΔT (°C)', y = 'Predicted detectability') +
   theme_bw() +
   theme(axis.text = element_text(size = 10),
@@ -74,12 +141,26 @@ ggplot(data = newdata) +
 
 
 
-newdata <- data.frame(
-  array = 'MDWEA',
-  station = 'AN3',
-  dt = 2.5,
-  average_noise = seq(min(data$average_noise), max(data$average_noise), length.out = 100),
-  distance = 800
+## zero strat ----
+newdata <- rbind(
+  data.frame(
+    array = 'Inner',
+    station = 'IS2',
+    dt = 0,
+    average_noise = seq(min(data[data$array == 'Inner',]$average_noise),
+                        max(data[data$array == 'Inner',]$average_noise),
+                        length.out = 100),
+    distance = 800
+  ),
+  data.frame(
+    array = 'MDWEA',
+    station = 'AN3',
+    dt = 0,
+    average_noise = seq(min(data[data$array == 'MDWEA',]$average_noise),
+                        max(data[data$array == 'MDWEA',]$average_noise),
+                        length.out = 100),
+    distance = 800
+  )
 )
 
 preds <- predict(m_ndt,
@@ -87,7 +168,7 @@ preds <- predict(m_ndt,
                  type = 'link',
                  se.fit = T,
                  # terms = 's(dt)')
-                 exclude = 's(array,station)')
+                 exclude = 's(station)')
 
 newdata$pred <- m_ndt$family$linkinv(preds$fit)
 newdata$lci <- m_ndt$family$linkinv(preds$fit - 1.96 * preds$se.fit)
@@ -97,18 +178,73 @@ newdata$uci <- m_ndt$family$linkinv(preds$fit + 1.96 * preds$se.fit)
 
 
 ggplot(data = newdata) +
-  geom_ribbon(aes(x = average_noise, ymin = lci, ymax = uci), fill = 'gray') +
-  geom_line(aes(x=average_noise, y = pred)) +
-  geom_rug(data = unique(data.table(data), by = 'average_noise'),
-           aes(x = average_noise)) +
+  geom_ribbon(aes(x = average_noise, ymin = lci, ymax = uci, fill = array), alpha = 0.8) +
+  geom_line(aes(x = average_noise, y = pred, group = array), color = 'white') +
+  geom_rug(data = unique(data.table(data)[array == 'Inner',], by = 'average_noise'),
+           aes(x = average_noise, color = array), alpha = 0.5) +
+  geom_rug(data = unique(data.table(data)[array == 'MDWEA',], by = 'average_noise'),
+           aes(x = average_noise, color = array), sides = 't', alpha = 0.5) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0), limits = c(0, 1)) +
-  labs(x = 'ΔT (°C)', y = 'Predicted detectability') +
+  scale_fill_manual(values = c('#D55E00', '#0072B2')) +
+  labs(x = 'Ambient noise (mV)', y = 'Predicted detectability') +
   theme_bw() +
   theme(axis.text = element_text(size = 10),
         axis.title = element_text(size = 12),
         plot.margin = unit(c(0.05, 0.8, 0.05, 0.1), "cm"))
 
+
+## zero strat ----
+newdata <- rbind(
+  data.frame(
+    array = 'Inner',
+    station = 'IS2',
+    dt = 5,
+    average_noise = seq(min(data[data$array == 'Inner',]$average_noise),
+                        max(data[data$array == 'Inner',]$average_noise),
+                        length.out = 100),
+    distance = 800
+  ),
+  data.frame(
+    array = 'MDWEA',
+    station = 'AN3',
+    dt = 5,
+    average_noise = seq(min(data[data$array == 'MDWEA',]$average_noise),
+                        max(data[data$array == 'MDWEA',]$average_noise),
+                        length.out = 100),
+    distance = 800
+  )
+)
+
+preds <- predict(m_ndt,
+                 newdata = newdata,
+                 type = 'link',
+                 se.fit = T,
+                 # terms = 's(dt)')
+                 exclude = 's(station)')
+
+newdata$pred <- m_ndt$family$linkinv(preds$fit)
+newdata$lci <- m_ndt$family$linkinv(preds$fit - 1.96 * preds$se.fit)
+newdata$uci <- m_ndt$family$linkinv(preds$fit + 1.96 * preds$se.fit)
+
+
+
+
+ggplot(data = newdata) +
+  geom_ribbon(aes(x = average_noise, ymin = lci, ymax = uci, fill = array), alpha = 0.8) +
+  geom_line(aes(x = average_noise, y = pred, group = array), color = 'white') +
+  geom_rug(data = unique(data.table(data)[array == 'Inner',], by = 'average_noise'),
+           aes(x = average_noise, color = array), alpha = 0.5) +
+  geom_rug(data = unique(data.table(data)[array == 'MDWEA',], by = 'average_noise'),
+           aes(x = average_noise, color = array), sides = 't', alpha = 0.5) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 1)) +
+  scale_fill_manual(values = c('#D55E00', '#0072B2')) +
+  labs(x = 'Ambient noise (mV)', y = 'Predicted detectability') +
+  theme_bw() +
+  theme(axis.text = element_text(size = 10),
+        axis.title = element_text(size = 12),
+        plot.margin = unit(c(0.05, 0.8, 0.05, 0.1), "cm"))
 
 
 
