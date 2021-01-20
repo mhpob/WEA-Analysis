@@ -170,7 +170,7 @@ m_gq <- bam(freq ~
               s(average_noise, array, bs = 'fs', k = 40, m = 2) +
               ti(average_noise, average_temperature, k = c(10, 10)) +
               ti(average_noise, dt, k = c(10, 10)),
-            family = qbn_hack(),
+            family = binomial(),
             data = data,
             weights = data$wgt,
             discrete = T)
