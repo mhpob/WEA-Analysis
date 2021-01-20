@@ -21,13 +21,13 @@ cv <- function(data, model, k, repeats = 1, seed = NULL){
 
 
     train_data$pred <- predict(CV_mod, type = 'response',
-                               exclude = 's(array,station)')
+                               exclude = 's(station)')
     # train_data <- train_data[!train_data$distance %in% c(0, 2400),]
 
 
     # Test the model
     test_data$pred <- predict(CV_mod, test_data, type = 'response',
-                              exclude = 's(array,station)')
+                              exclude = 's(station)')
     # test_data <- test_data[!test_data$distance %in% c(0, 2400),]
 
 
@@ -192,7 +192,7 @@ m_gq_ar <- bam(freq ~
                  s(average_noise, array, bs = 'fs', k = 40, m = 2) +
                  ti(average_noise, average_temperature, k = c(10, 10)) +
                  ti(average_noise, dt, k = c(10, 10)),
-               family = qbn_hack(),
+               family = binomial(),
                data = data,
                weights = data$wgt,
                discrete = T,
@@ -201,6 +201,26 @@ m_gq_ar <- bam(freq ~
 
 summary(m_gq_ar)$dispersion
 # Doesn't really, but autocorrelation is apparent so it's likely needed
+
+
+#Going back to binomial family
+m_g <- bam(freq ~
+              distance +
+              s(station, bs = 're') +
+              s(dt, k = 40, m = 2) +
+              s(dt, array, bs = 'fs', k = 40, m = 2) +
+              s(average_temperature, k = 40, m = 2) +
+              s(average_temperature, array, bs = 'fs', k = 40, m = 2) +
+              s(average_noise, k = 40, m = 2) +
+              s(average_noise, array, bs = 'fs', k = 40, m = 2) +
+              ti(average_noise, average_temperature, k = c(10, 10)) +
+              ti(average_noise, dt, k = c(10, 10)),
+            family = binomial(),
+            data = data,
+            weights = data$wgt,
+            discrete = T)
+
+rho_guess <- acf(resid(m_g), plot = F)$acf[2]
 
 # ~ Distance ----
 ##  Linear response to distance only (Null model)
@@ -216,6 +236,8 @@ m <- bam(freq ~
            rho = rho_guess,
            AR.start = data$ts.start)
 
+##  Rsq/Dev expl
+sapply(summary(m)[c(10,14)], round, 3)
 
 ##  5-fold cross-validation
 kf_d <- cv(data, m, k = 5, repeats = 5, seed = seed)
@@ -230,13 +252,16 @@ m_n <- bam(freq ~
              s(station, bs = 're') +
              s(average_noise, k = 40, m = 2) +
              s(average_noise, array, bs = 'fs', k = 40, m = 2),
-           family = qbn_hack(),
+           family = binomial(),
            data = data,
            weights = data$wgt,
            discrete = T,
            rho = rho_guess,
            AR.start = data$ts.start)
 
+
+##  Rsq/Dev expl
+sapply(summary(m_n)[c(10,14)], round, 3)
 
 ##  5-fold cross-validation
 kf_n <- cv(data, m_n, k = 5, repeats = 5, seed = seed)
@@ -261,6 +286,9 @@ m_ndt <- bam(freq ~
              rho = rho_guess,
              AR.start = data$ts.start)
 
+
+##  Rsq/Dev expl
+sapply(summary(m_ndt)[c(10,14)], round, 3)
 
 ##  5-fold cross-validation
 kf_ndt <- cv(data, m_ndt, k = 5, repeats = 5, seed = seed)
@@ -287,6 +315,9 @@ m_ndti <- bam(freq ~
               AR.start = data$ts.start)
 
 
+##  Rsq/Dev expl
+sapply(summary(m_ndti)[c(10,14)], round, 3)
+
 ##  5-fold cross-validation
 kf_ndti <- cv(data, m_ndti, k = 5, repeats = 5, seed = seed)
 colMeans(kf_ndti[, grepl('test', names(kf_ndti))]) * 100
@@ -307,6 +338,9 @@ m_dt <- bam(freq ~
             discrete = T,
             rho = rho_guess,
             AR.start = data$ts.start)
+
+##  Rsq/Dev expl
+sapply(summary(m_dt)[c(10,14)], round, 3)
 
 
 ##  5-fold cross-validation
@@ -330,6 +364,9 @@ m_nbt <- bam(freq ~
              discrete = T,
              rho = rho_guess,
              AR.start = data$ts.start)
+
+##  Rsq/Dev expl
+sapply(summary(m_nbt)[c(10,14)], round, 3)
 
 
 ##  5-fold cross-validation
@@ -357,6 +394,9 @@ m_nbti <- bam(freq ~
               AR.start = data$ts.start)
 
 
+##  Rsq/Dev expl
+sapply(summary(m_nbti)[c(10,14)], round, 3)
+
 ##  5-fold cross-validation
 kf_nbti <- cv(data, m_nbti, k = 5, repeats = 5, seed = seed)
 colMeans(kf_nbti[, grepl('test', names(kf_nbti))]) * 100
@@ -377,6 +417,9 @@ m_bt <- bam(freq ~
             discrete = T,
             rho = rho_guess,
             AR.start = data$ts.start)
+
+##  Rsq/Dev expl
+sapply(summary(m_bt)[c(10,14)], round, 3)
 
 
 ##  5-fold cross-validation
