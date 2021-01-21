@@ -1,40 +1,33 @@
 # Packages ----
-library(ggplot2); library(patchwork); library(data.table)
-library(changepoint); library(mcp); library(mgcv)
-
-
-
-# Custom functions ----
-## MVN random deviates
-rmvn <- function(n, mu, sig){
-  L <- mroot(sig)
-  m <- ncol(L)
-  t(mu + L %*% matrix(rnorm(m*n), m, n))
-}
+library(ggplot2); library(patchwork); library(data.table) ;library(mgcv)
 
 
 
 # Import data ----
-data <- readRDS('data and imports/rangetest_median_sitespec.RDS')
-data <- data[data$distance > 0 & data$distance < 2400,]
-names(data) <- gsub(' ', '_', tolower(names(data)))
-data$array <- as.factor(gsub(' ', '', data$array))
-data$station <- as.factor(data$station)
-data$freq <- data$success / (data$success + data$fail)
-data$wgt <- (data$success + data$fail) / mean((data$success + data$fail))
-data$date <- as.factor(data$date)
+data <- data.table(
+  readRDS('data and imports/rangetest_median_sitespec.RDS')
+)
+data <- data[distance > 0 & distance < 2400]
 
-data <- data[order(data$station, data$distance, data$date),]
-data$ts.start <- ifelse(data$date == '2017-12-21' |
-                          (data$date == '2018-08-08' & data$station == 'AN3' & data$distance == 800) |
-                          (data$date == '2018-08-08' & data$station == 'AN3_250' & data$distance == 550), T, F)
+setnames(data, gsub(' ', '_', tolower(names(data))))
 
+data[, ':='(array = as.factor(gsub(' ', '', array)),
+            station = as.factor(station),
+            freq = success / (success + fail),
+            wgt = (success + fail) / mean(success + fail),
+            date = as.factor(date),
+            ts.start = fifelse(date == '2017-12-21' |
+                                 (date == '2018-08-08' & station == 'AN3' & distance == 800) |
+                                 (date == '2018-08-08' & station == 'AN3_250' & distance == 550),
+                               T, F))]
+
+setorder(data, station, distance, date)
 
 
 # Import winning model ----
 ##  see "mgcv model selection.R" for selection
-
-m_ndt <- bam(freq ~ distance + s(station, bs = 're') +
+m_ndt <- bam(freq ~ distance +
+               s(station, bs = 're') +
                s(average_noise, k = 40, m = 2) +
                s(dt, k = 40, m = 2) +
                s(average_noise, array, k = 40, m = 2, bs = 'fs') +
@@ -43,7 +36,7 @@ m_ndt <- bam(freq ~ distance + s(station, bs = 're') +
              data = data,
              weights = data$wgt,
              discrete = T,
-             rho = 0.1623854,
+             rho = 0.5,
              AR.start = data$ts.start)
 
 
@@ -55,8 +48,17 @@ m_ndt <- bam(freq ~ distance + s(station, bs = 're') +
 #   https://fromthebottomoftheheap.net/2016/12/15/simultaneous-interval-revisited/
 
 ## Create new data
-new_data <- data.table(data)[distance == 800,]
-new_data <- unique(new_data, by = c('date', 'array'))
+new_data <- data[distance == 800,]
+new_data <- new_data[, .(average_noise = mean(average_noise),
+                         average_temperature = mean(average_temperature),
+                         dt = mean(dt),
+                         freq = mean(freq),
+                         distance = 800,
+                         station = 'IS2'),
+                     by = c('date', 'array')]
+setorder(new_data, date, array)
+
+# new_data <- unique(new_data, by = c('date', 'array'))
 
 
 
@@ -66,8 +68,7 @@ vcm <- vcov(m_ndt, unconditional = T)
 
 
 ### Simulate parameters (x10000)
-sims <- rmvn(10000, mu = coef(m_ndt), sig = vcm)
-
+sims <- rmvn(10000, mu = coef(m_ndt), V = vcm)
 
 
 # Calculate the linear predictor matrix ----
@@ -107,16 +108,15 @@ colnames(lpm)
 # -c(2, 27, 28) removes the distance coefficients and influence of the random effect
 d50_sim <- data.table(
   (log10(0.5 / (1 - 0.5)) -
-              (lpm[, -c(2)] %*% t(sims)[-c(2),])) /
+              (lpm[, -2] %*% t(sims)[-2,])) /
   t(sims)[2,]
 )
 
-d50 <- list(d50_med = apply(d50_sim, 1, median),
-            d50_lci = apply(d50_sim, 1, quantile, 0.025),
-            d50_uci = apply(d50_sim, 1, quantile, 0.975))
-d50 <- as.data.frame(d50)
+d50 <- data.table(d50_med = apply(d50_sim, 1, median),
+                  d50_lci = apply(d50_sim, 1, quantile, 0.025),
+                  d50_uci = apply(d50_sim, 1, quantile, 0.975))
 
-d50 <- data.frame(new_data, d50)
+d50 <- data.table(new_data, d50)
 
 
 
@@ -127,89 +127,12 @@ ggplot(data = d50) +
   geom_line(aes(x = as.Date(date), y = d50_med)) +
   facet_wrap(~array, ncol = 1)+
   labs(x = NULL, y = 'Distance at 50% detection probability (m)') +
-  coord_cartesian(ylim=c(0, 1700))+
+  coord_cartesian(ylim=c(0, 1250), expand = F) +
   # ylim(0, 1100)+
   theme_bw()
 
 
-# D50, but aggregating across arrays ----
-new_inn <- new_data[array == 'Inner']
-new_wea <- new_data[array == 'MDWEA']
-
-lpm_inn <- predict(m_ndt, new_inn, type = 'lpmatrix', unconditional = T,
-                   exclude = c('s(station)', 's(average_noise,array)', 's(dt,array)'))
-lpm_wea <- predict(m_ndt, new_wea, type = 'lpmatrix', unconditional = T,
-                   exclude = c('s(station)', 's(average_noise,array)', 's(dt,array)'))
-
-
-d50_sim_inn <- data.table(
-  (log10(0.5 / (1 - 0.5)) -
-     (lpm_inn[, -c(2)] %*% t(sims)[-c(2),])) /
-    t(sims)[2,]
-)
-d50_sim_wea <- data.table(
-  (log10(0.5 / (1 - 0.5)) -
-     (lpm_wea[, -c(2)] %*% t(sims)[-c(2),])) /
-    t(sims)[2,]
-)
-
-d50_sim <- cbind(d50_sim_inn, d50_sim_wea)
-
-d50 <- list(d50_med = apply(d50_sim, 1, median),
-            d50_lci = apply(d50_sim, 1, quantile, 0.025),
-            d50_uci = apply(d50_sim, 1, quantile, 0.975))
-d50 <- as.data.frame(d50)
-
-d50 <- data.frame(date = unique(new_data$date), d50)
-
-
-# fwrite(d50, 'range test/mgcv models/d50_20200803.csv')
-
-
-# Vis ----
-# d50_agg_plot <-
-  ggplot(data = d50) +
-  geom_ribbon(aes(x = as.Date(date), ymin = d50_lci, ymax = d50_uci),
-              fill = 'gray', size = 1) +
-  geom_line(aes(x = as.Date(date), y = d50_med)) +
-  labs(x = NULL, y = 'Distance at 50% detection probability (m)') +
-  coord_cartesian(ylim=c(0, 1250), expand = F) +
-  scale_x_date(date_breaks = 'month', date_labels = '%b', expand = c(0, 0)) +
-  theme_bw() +
-  theme(axis.text = element_text(size = 12),
-        axis.title = element_text(size = 14))
-
-
-
-# D50, but including influence of random effects ----
-lpm_inn <- predict(mod_int, new_inn, type = 'lpmatrix', unconditional = T)
-lpm_wea <- predict(mod_int, new_wea, type = 'lpmatrix', unconditional = T)
-
-
-d50_sim_inn <- data.table(
-  (log10(0.5 / (1 - 0.5)) -
-     (lpm_inn[, -2] %*% t(sims)[-2,])) /
-    t(sims)[2,]
-)
-d50_sim_wea <- data.table(
-  (log10(0.5 / (1 - 0.5)) -
-     (lpm_wea[, -2] %*% t(sims)[-2,])) /
-    t(sims)[2,]
-)
-
-d50_inn <- apply(d50_sim_inn, 1, median)
-d50_wea <- apply(d50_sim_wea, 1, median)
-
-range(d50_inn)
-range(d50_wea)
-
-d50_ran <- data.frame(d50 = c(d50_inn, d50_wea),
-                      array = c(rep('inn', times = length(d50_inn)),
-                                rep('wea', times = length(d50_wea))),
-                      date = rep(unique(new_data$date), times = 2))
-
-
-
+d50 <- fwrite(d50, 'range test/mgcv models/d50_20210120.csv')
 
 
 
@@ -218,19 +141,29 @@ d50_ran <- data.frame(d50 = c(d50_inn, d50_wea),
 ##    change points, so using changepoint package first, then mcp in order to
 ##    get an idea of the error around the estimate.
 ##    Note: need JAGS and rjags installed to run mcp.
+library(changepoint); library(mcp)
 
-d50 <- fread('range test/mgcv models/d50_20200803.csv')
+
+d50 <- fread('range test/mgcv models/d50_20210120.csv')
 d50 <- setDT(d50)[, n_date := as.numeric(as.Date(date)) - as.numeric(min(as.Date(date)))]
 
 
 
 ## Use changepoint package to find number of change points ----
-cp_d50 <- cpt.meanvar(d50$d50_med,
+cp_d50inn <- cpt.meanvar(d50[array == 'Inner']$d50_med,
                          method = 'PELT', penalty = 'CROPS',
                          pen.value = c(15, 500))
 
-plot(cp_d50, diagnostic = T)
-abline(v = 1, col = 'blue')
+plot(cp_d50inn, diagnostic = T)
+abline(v = 2, col = 'blue')
+### Two change points found.
+
+cp_d50wea <- cpt.meanvar(d50[array == 'MDWEA']$d50_med,
+                         method = 'PELT', penalty = 'CROPS',
+                         pen.value = c(15, 500))
+
+plot(cp_d50wea, diagnostic = T)
+abline(v = 2, col = 'blue')
 ### Two change points found.
 
 
@@ -241,8 +174,8 @@ cp_fit <-  mcp(
   ## A model with 3 intercepts and abrupt changes in between
   model = list(
     d50_med ~ 1,
-    ~ 1,
-    ~ 1
+     ~ 1,
+     ~ 1
   ),
   par_x = 'n_date',
   ## Dirichlet priors to push the change points away from each other
@@ -251,11 +184,12 @@ cp_fit <-  mcp(
     cp_2 = "dirichlet(2)"
   ),
   ## Initialize intercept estimates to help the model converge
-  inits = list(int_1 = 550,
+  inits = list(int_1 = 600,
                int_2 = 800,
                int_3 = 600),
-  data = d50,
+  data = d50[array == 'MDWEA'],
   cores = 3,
+  chains = 3,
   iter = 10000
 )
 summary(cp_fit)
@@ -277,22 +211,30 @@ posts <- melt(posts[, c('cp_1', 'cp_2')],
 posts <- posts[, date := as.Date(round(date) + as.numeric(min(d50$date)))]
 
 
-## Grab y axis limits from the time series plot
-base_lims <- ggplot_build(d50_agg_plot)$layout$panel_scales_y[[1]]$limits
+
 
 
 ## Plot
 d50_agg_plot <-
-  ggplot(data = d50) +
+  ggplot(data = d50[array == 'Inner']) +
   geom_ribbon(aes(x = date, ymin = d50_lci, ymax = d50_uci),
               fill = 'gray') +
   geom_line(aes(x = date, y = d50_med), size = 0) +
   labs(x = NULL, y = 'Distance at 50% detectability (m)') +
-  scale_y_continuous(limits=c(0, 1100), expand = c(0, 0)) +
+  coord_cartesian(ylim = c(0, 1250), expand = F) +
   scale_x_date(date_breaks = 'month', date_labels = '%b', expand = c(0, 0)) +
   theme_bw()
 
-TS <- d50_agg_plot +
+## Grab y axis limits from the time series plot
+base_lims <-
+  ## Un-comment if using scale_y_... above
+  # ggplot_build(d50_agg_plot)$layout$panel_scales_y[[1]]$limits
+
+  ## Un-comment if using coord_cartesian above
+  ggplot_build(d50_agg_plot)$plot$coordinates$limits$y
+
+# TS <-
+  d50_agg_plot +
   ggplot2::stat_density(aes(x = date,
                             # scale to 20% y axis range
                             y = ..scaled.. * diff(base_lims) * 0.2 - 1e-13,
@@ -300,7 +242,8 @@ TS <- d50_agg_plot +
                         data = posts, color = 'brown', size = 0,
                         position = "identity",
                         geom = "line",
-                        show.legend = FALSE) +
+                        show.legend = FALSE)
++
   theme(axis.text.x = element_text(angle = 30, hjust = 1),
         axis.title.y = element_text(margin = margin(0, 0, -3, 0)),
         plot.margin = unit(c(0.1, 0.05, 0, 0.1), 'mm'),
