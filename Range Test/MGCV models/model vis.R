@@ -4,19 +4,24 @@ library(ggplot2); library(tidyr); library(data.table); library(mgcv)
 
 
 # Import data ----
-data <- readRDS('data and imports/rangetest_median_sitespec.RDS')
-data <- data[data$distance > 0 & data$distance < 2400,]
-names(data) <- gsub(' ', '_', tolower(names(data)))
-data$array <- as.factor(gsub(' ', '', data$array))
-data$station <- as.factor(data$station)
-data$freq <- data$success / (data$success + data$fail)
-data$wgt <- (data$success + data$fail) / mean((data$success + data$fail))
-data$date <- as.factor(data$date)
+data <- data.table(
+  readRDS('data and imports/rangetest_median_sitespec.RDS')
+)
+data <- data[distance > 0 & distance < 2400]
 
-data <- data[order(data$station, data$distance, data$date),]
-data$ts.start <- ifelse(data$date == '2017-12-21' |
-                          (data$date == '2018-08-08' & data$station == 'AN3' & data$distance == 800) |
-                          (data$date == '2018-08-08' & data$station == 'AN3_250' & data$distance == 550), T, F)
+setnames(data, gsub(' ', '_', tolower(names(data))))
+
+data[, ':='(array = as.factor(gsub(' ', '', array)),
+            station = as.factor(station),
+            freq = success / (success + fail),
+            wgt = (success + fail) / mean(success + fail),
+            date = as.factor(date),
+            ts.start = fifelse(date == '2017-12-21' |
+                                 (date == '2018-08-08' & station == 'AN3' & distance == 800) |
+                                 (date == '2018-08-08' & station == 'AN3_250' & distance == 550),
+                               T, F))]
+
+setorder(data, station, distance, date)
 
 
 
@@ -24,7 +29,6 @@ data$ts.start <- ifelse(data$date == '2017-12-21' |
 ##  see "mgcv model selection.R" for selection
 
 m_ndt <- bam(freq ~ distance + s(station, bs = 're') +
-               # s(array, bs = 're') +
                s(average_noise, k = 40, m = 2) +
                s(dt, k = 40, m = 2) +
                s(average_noise, array, k = 40, m = 2, bs = 'fs') +
@@ -33,7 +37,7 @@ m_ndt <- bam(freq ~ distance + s(station, bs = 're') +
              data = data,
              weights = data$wgt,
              discrete = T,
-             rho = 0.165,
+             rho = rho_guess,
              AR.start = data$ts.start)
 
 
@@ -43,14 +47,14 @@ med_noise <- unique(data.table(data), by = c('date', 'station'))[
 
 
 newdata <- rbind(
-  data.frame(
+  data.table(
     array = 'Inner',
     station = 'IS2',
     dt = seq(min(data[data$array == 'Inner',]$dt), max(data[data$array == 'Inner',]$dt), length.out = 100),
     average_noise = med_noise[array == 'Inner', median],
     distance = 800
   ),
-  data.frame(
+  data.table(
     array = 'MDWEA',
     station = 'AN3',
     dt = seq(min(data[data$array == 'MDWEA',]$dt), max(data[data$array == 'MDWEA',]$dt), length.out = 100),
@@ -64,18 +68,48 @@ preds <- predict(m_ndt,
                  newdata = newdata,
                  type = 'link',
                  se.fit = T,
-                 # terms = 's(dt)')
                  exclude = c('s(station)'))
 
-newdata$pred <- m_ndt$family$linkinv(preds$fit)
-newdata$lci <- m_ndt$family$linkinv(preds$fit - 1.96 * preds$se.fit)
-newdata$uci <- m_ndt$family$linkinv(preds$fit + 1.96 * preds$se.fit)
+newdata[, ':='(pred = m_ndt$family$linkinv(preds$fit),
+               lci = m_ndt$family$linkinv(preds$fit - 1.96 * preds$se.fit),
+               uci = m_ndt$family$linkinv(preds$fit + 1.96 * preds$se.fit))]
 
 
+newdata_noarray <- data.table(
+  array = 'Inner',
+  station = 'AN3',
+  dt = seq(data[,min(dt)], data[, max(dt)], length.out = 100),
+  average_noise = unique(data, by = c('date', 'station'))[, median(average_noise)],
+  distance = 800
+)
 
-ggplot(data = newdata) +
-  geom_ribbon(aes(x = dt, ymin = lci, ymax = uci, fill = array), alpha = 0.8) +
-  geom_line(aes(x = dt, y = pred, group = array), color = 'white') +
+preds <- predict(m_ndt,
+                 newdata = newdata_noarray,
+                 type = 'link',
+                 se.fit = T,
+                 exclude = c('s(station)', 's(average_noise,array)', 's(dt,array)'))
+
+newdata_noarray[, ':='(pred = m_ndt$family$linkinv(preds$fit),
+                       lci = m_ndt$family$linkinv(preds$fit - 1.96 * preds$se.fit),
+                       uci = m_ndt$family$linkinv(preds$fit + 1.96 * preds$se.fit),
+                       array = 'Combined')]
+
+
+newdata <- rbind(newdata, newdata_noarray)
+
+
+# med_dt <-
+  ggplot() +
+    geom_ribbon(data = newdata[array == 'Combined'],
+                aes(x = dt, ymin = lci, ymax = uci), fill = 'lightgray') +
+    geom_ribbon(data = newdata[array != 'Combined'],
+                aes(x = dt, ymin = lci, ymax = uci, fill = array), alpha = 0.5) +
+    geom_line(data = newdata, aes(x = dt, y = pred, group = array), color = 'white')
+  +
+
+    geom_line(data = newdata[newdata$array == 'MDWEA',],
+              aes(x = dt, y = pred_arr), color = 'black', size = 1) +
+
   geom_rug(data = unique(data.table(data)[array == 'Inner',], by = 'dt'),
            aes(x = dt, color = array), alpha = 0.5) +
   geom_rug(data = unique(data.table(data)[array == 'MDWEA',], by = 'dt'),
@@ -87,7 +121,8 @@ ggplot(data = newdata) +
   theme_bw() +
   theme(axis.text = element_text(size = 10),
         axis.title = element_text(size = 12),
-        plot.margin = unit(c(0.05, 0.8, 0.05, 0.1), "cm"))
+        plot.margin = unit(c(0.05, 0.8, 0.05, 0.1), "cm"),
+        legend.position = c(0.1, 0.8))
 
 
 
@@ -122,9 +157,30 @@ newdata$lci <- m_ndt$family$linkinv(preds$fit - 1.96 * preds$se.fit)
 newdata$uci <- m_ndt$family$linkinv(preds$fit + 1.96 * preds$se.fit)
 
 
-ggplot(data = newdata) +
-  geom_ribbon(aes(x = dt, ymin = lci, ymax = uci, fill = array), alpha = 0.8) +
-  geom_line(aes(x = dt, y = pred, group = array), color = 'white') +
+preds <- predict(m_ndt,
+                 newdata = newdata,
+                 type = 'link',
+                 se.fit = T,
+                 # terms = 's(dt)')
+                 exclude = c('s(station)', 's(average_noise,array)', 's(dt,array)'))
+
+newdata$pred_arr <- m_ndt$family$linkinv(preds$fit)
+newdata$lci_arr <- m_ndt$family$linkinv(preds$fit - 1.96 * preds$se.fit)
+newdata$uci_arr <- m_ndt$family$linkinv(preds$fit + 1.96 * preds$se.fit)
+
+
+
+hi_dt <-
+  ggplot() +
+    geom_ribbon(data = newdata[newdata$array == 'MDWEA',],
+                aes(x = dt, ymin = lci_arr, ymax = uci_arr), fill = 'lightgray') +
+
+  geom_ribbon(data = newdata, aes(x = dt, ymin = lci, ymax = uci, fill = array), alpha = 0.8) +
+  geom_line(data = newdata, aes(x = dt, y = pred, group = array), color = 'white') +
+
+    geom_line(data = newdata[newdata$array == 'MDWEA',],
+              aes(x = dt, y = pred_arr), color = 'black') +
+
   geom_rug(data = unique(data.table(data)[array == 'Inner',], by = 'dt'),
            aes(x = dt, color = array), alpha = 0.5) +
   geom_rug(data = unique(data.table(data)[array == 'MDWEA',], by = 'dt'),
