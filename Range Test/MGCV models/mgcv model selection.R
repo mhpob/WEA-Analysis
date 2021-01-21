@@ -6,6 +6,10 @@ library(mgcv)
 # Functions ----
 cv <- function(data, model, k, repeats = 1, seed = NULL){
 
+  terms_to_exclude <- grep('array|station',
+                            row.names(summary(model)$s.table),
+                           value = T)
+
   refit <- function(i, data_shuffle, folds){
     # Segment data by fold using the which() function
     test_ids <- which(folds == i, arr.ind = TRUE)
@@ -21,13 +25,14 @@ cv <- function(data, model, k, repeats = 1, seed = NULL){
 
 
     train_data$pred <- predict(CV_mod, type = 'response',
-                               exclude = 's(station)')
+                               exclude = terms_to_exclude)
     # train_data <- train_data[!train_data$distance %in% c(0, 2400),]
 
 
     # Test the model
     test_data$pred <- predict(CV_mod, test_data, type = 'response',
-                              exclude = 's(station)')
+                              exclude = c('s(station)', 's(average_noise,array)',
+                                          's(dt,array)', 's(average_temperature,array)'))
     # test_data <- test_data[!test_data$distance %in% c(0, 2400),]
 
 
@@ -170,7 +175,7 @@ m_gq <- bam(freq ~
               s(average_noise, array, bs = 'fs', k = 40, m = 2) +
               ti(average_noise, average_temperature, k = c(10, 10)) +
               ti(average_noise, dt, k = c(10, 10)),
-            family = binomial(),
+            family = qbn_hack(),
             data = data,
             weights = data$wgt,
             discrete = T)
@@ -192,7 +197,7 @@ m_gq_ar <- bam(freq ~
                  s(average_noise, array, bs = 'fs', k = 40, m = 2) +
                  ti(average_noise, average_temperature, k = c(10, 10)) +
                  ti(average_noise, dt, k = c(10, 10)),
-               family = binomial(),
+               family = qbn_hack(),
                data = data,
                weights = data$wgt,
                discrete = T,
@@ -224,12 +229,10 @@ rho_guess <- acf(resid(m_g), plot = F)$acf[2]
 
 # ~ Distance ----
 ##  Linear response to distance only (Null model)
-##  There are some convergence issues when fitting as a GAM, so fitting this as
-##    a GLM.
 m <- bam(freq ~
            distance +
            s(station, bs = 're'),
-           family = qbn_hack(),
+           family = binomial(),
            data = data,
            weights = data$wgt,
            discrete = T,
@@ -279,7 +282,7 @@ m_ndt <- bam(freq ~
                s(average_noise, array, bs = 'fs', k = 40, m = 2) +
                s(dt, k = 40, m = 2) +
                s(dt, array, bs = 'fs', k = 40, m = 2),
-             family = qbn_hack(),
+             family = binomial(),
              data = data,
              weights = data$wgt,
              discrete = T,
@@ -307,7 +310,7 @@ m_ndti <- bam(freq ~
                 s(average_noise, k = 40, m = 2) +
                 s(average_noise, array, bs = 'fs', k = 40, m = 2) +
                 ti(average_noise, dt, k = c(10, 10)),
-              family = qbn_hack(),
+              family = binomial(),
               data = data,
               weights = data$wgt,
               discrete = T,
@@ -332,7 +335,7 @@ m_dt <- bam(freq ~
               s(station, bs = 're') +
               s(dt, k = 40, m = 2) +
               s(dt, array, bs = 'fs', k = 40, m = 2),
-            family = qbn_hack(),
+            family = binomial(),
             data = data,
             weights = data$wgt,
             discrete = T,
@@ -358,7 +361,7 @@ m_nbt <- bam(freq ~
                s(average_noise, array, bs = 'fs', k = 40, m = 2) +
                s(average_temperature, k = 40, m = 2) +
                s(average_temperature, array, bs = 'fs', k = 40, m = 2),
-             family = qbn_hack(),
+             family = binomial(),
              data = data,
              weights = data$wgt,
              discrete = T,
@@ -386,7 +389,7 @@ m_nbti <- bam(freq ~
                 s(average_temperature, k = 40, m = 2) +
                 s(average_temperature, array, bs = 'fs', k = 40, m = 2) +
                 ti(average_noise, average_temperature, k = c(10, 10)),
-              family = qbn_hack(),
+              family = binomial(),
               data = data,
               weights = data$wgt,
               discrete = T,
@@ -411,7 +414,7 @@ m_bt <- bam(freq ~
               s(station, bs = 're') +
               s(average_temperature, k = 40, m = 2) +
               s(average_temperature, array, bs = 'fs', k = 40, m = 2),
-            family = qbn_hack(),
+            family = binomial(),
             data = data,
             weights = data$wgt,
             discrete = T,
