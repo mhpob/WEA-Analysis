@@ -147,7 +147,8 @@ set.seed(2000031)
 
 d50 <- fread('range test/mgcv models/d50_20210120.csv')
 d50 <- d50[, ':='(n_date = as.numeric(as.Date(date)) - as.numeric(min(as.Date(date))),
-                  array = ifelse(array == 'Inner', 'Nearshore', 'Mid-shelf'))]
+                  array = fifelse(array == 'Inner', 'Nearshore', 'Mid-shelf'),
+                  d50_lci = fifelse(d50_lci < 0, 0, d50_lci))]
 
 
 
@@ -254,6 +255,54 @@ posts <- rbind(
 )
 
 
+# Data for wind rug ----
+ndbc_dl <- function(url){
+  buoy_header <- fread(url,
+                       nrows = 2, header = F)
+  buoy_header <- buoy_header[, lapply(.SD, function(.) gsub('#', '', .))]
+  buoy_header <- buoy_header[, lapply(.SD, function(.) gsub('/', '_', .))]
+  buoy_header <- buoy_header[, lapply(.SD, function(.) paste(., collapse = '_'))]
+
+  buoy_data <- fread(url,
+                     skip = 2,
+                     col.names = as.character(buoy_header))
+  buoy_data <- buoy_data[WSPD_m_s != 99,]
+
+
+  buoy_data <- buoy_data[, date := as.Date(paste(YY_yr, MM_mo, DD_dy, sep = '-'))]
+}
+
+
+coast_2017 <- ndbc_dl('https://www.ndbc.noaa.gov/view_text_file.php?filename=44009h2017.txt.gz&dir=data/historical/stdmet/')
+coast_2018 <- ndbc_dl('https://www.ndbc.noaa.gov/view_text_file.php?filename=44009h2018.txt.gz&dir=data/historical/stdmet/')
+
+coast <- rbind(coast_2017, coast_2018)
+coast <- coast[date >= '2017-12-21' & date <= '2018-12-04']
+
+
+coast <- coast[, .(max = max(WSPD_m_s)),
+               by = date]
+
+
+
+# No records after 2018-11-15; supplement with Ocean City Inlet records
+ocmd <- ndbc_dl('https://www.ndbc.noaa.gov/view_text_file.php?filename=ocim2h2018.txt.gz&dir=data/historical/stdmet/')
+
+ocmd <- ocmd[date > '2018-11-15' & date <= '2018-12-04']
+
+# Coastal buoy are hourly averages, so do the same here
+ocmd <- ocmd[, .(wspd = mean(WSPD_m_s),
+                 date = as.Date(paste(YY_yr, MM_mo, DD_dy, sep = '-'))),
+             by = c('YY_yr', 'MM_mo', 'DD_dy', 'hh_hr')]
+
+ocmd <- ocmd[, .(max = max(wspd)), by = date]
+
+coast <- rbind(coast, ocmd)
+
+coast[, array := 'Nearshore']
+
+
+
 ## Plot
 d50_plot <-
   ggplot(data = d50) +
@@ -262,7 +311,22 @@ d50_plot <-
   labs(x = NULL, y = 'Distance at 50% detectability (m)') +
   facet_wrap(~array, ncol = 1, strip.position = 'right') +
   scale_color_manual(values = c('#0072B2', '#D55E00')) +
-  coord_cartesian(ylim = c(0, 1250), expand = F) +
+
+  # Wind rug
+  geom_rug(data = coast[max >= 17.2],
+           aes(x = date), length = unit(0.07, "npc"),
+           size = 0.1,
+           inherit.aes = T,
+           show.legend = F,
+           sides = 't', outside = T) +
+  geom_rug(data = coast[max >= 10.8 & max < 17.2],
+           aes(x = date), length = unit(0.03, "npc"),
+           size = 0.1,
+           inherit.aes = T,
+           show.legend = F,
+           sides = 't', outside = T) +
+
+  coord_cartesian(ylim = c(0, 1250), expand = F, clip = 'off') +
   scale_x_date(date_breaks = 'month', date_labels = '%b', expand = c(0, 0)) +
   theme_bw() +
   theme(legend.position = 'none')
@@ -289,6 +353,7 @@ compiled_plot <-
         axis.text.x = element_text(size = 5, margin = margin(t = 0)),
         axis.title.y = element_text(size = 6, margin = margin(0, 0, -3, 0)),
         plot.margin = unit(c(0.6, 0.05, 0, 0.1), 'mm'),
+        panel.border = element_rect(size = 0.3),
         panel.grid.minor.y = element_blank(),
         panel.grid.major = element_line(size = 0.3),
         panel.grid.minor.x = element_line(size = 0.1),
@@ -296,8 +361,6 @@ compiled_plot <-
         axis.ticks.length = unit(0.5, 'mm'),
         strip.background = element_blank(),
         strip.text = element_text(size = 6, margin = margin(0, 0, 0.1, 0)))
-
-
 
 # Create and append histogram ----
 # hist <- ggplot() +
