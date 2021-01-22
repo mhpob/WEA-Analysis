@@ -132,7 +132,7 @@ ggplot(data = d50) +
   theme_bw()
 
 
-d50 <- fwrite(d50, 'range test/mgcv models/d50_20210120.csv')
+# d50 <- fwrite(d50, 'range test/mgcv models/d50_20210120.csv')
 
 
 
@@ -141,36 +141,38 @@ d50 <- fwrite(d50, 'range test/mgcv models/d50_20210120.csv')
 ##    change points, so using changepoint package first, then mcp in order to
 ##    get an idea of the error around the estimate.
 ##    Note: need JAGS and rjags installed to run mcp.
-library(changepoint); library(mcp)
+library(ggplot2); library(changepoint); library(mcp); library(data.table)
 
+set.seed(2000031)
 
 d50 <- fread('range test/mgcv models/d50_20210120.csv')
-d50 <- setDT(d50)[, n_date := as.numeric(as.Date(date)) - as.numeric(min(as.Date(date)))]
+d50 <- d50[, ':='(n_date = as.numeric(as.Date(date)) - as.numeric(min(as.Date(date))),
+                  array = ifelse(array == 'Inner', 'Nearshore', 'Mid-shelf'))]
 
 
 
 ## Use changepoint package to find number of change points ----
-cp_d50inn <- cpt.meanvar(d50[array == 'Inner']$d50_med,
+cp_d50ns <- cpt.meanvar(d50[array == 'Nearshore']$d50_med,
                          method = 'PELT', penalty = 'CROPS',
                          pen.value = c(15, 500))
 
-plot(cp_d50inn, diagnostic = T)
+plot(cp_d50ns, diagnostic = T)
 abline(v = 2, col = 'blue')
 ### Two change points found.
 
-cp_d50wea <- cpt.meanvar(d50[array == 'MDWEA']$d50_med,
+cp_d50ms <- cpt.meanvar(d50[array == 'Mid-shelf']$d50_med,
                          method = 'PELT', penalty = 'CROPS',
                          pen.value = c(15, 500))
 
-plot(cp_d50wea, diagnostic = T)
+plot(cp_d50ms, diagnostic = T)
 abline(v = 2, col = 'blue')
 ### Two change points found.
 
 
 
 # Use mcp to model change points ----
-## Fit model
-cp_fit <-  mcp(
+## Fit Nearshore model
+cp_ns_fit <-  mcp(
   ## A model with 3 intercepts and abrupt changes in between
   model = list(
     d50_med ~ 1,
@@ -187,14 +189,39 @@ cp_fit <-  mcp(
   inits = list(int_1 = 600,
                int_2 = 800,
                int_3 = 600),
-  data = d50[array == 'MDWEA'],
+  data = d50[array == 'Nearshore'],
   cores = 3,
   chains = 3,
   iter = 10000
 )
-summary(cp_fit)
-plot(cp_fit)
+summary(cp_ns_fit)
+# plot(cp_fit)
 
+
+## Fit Inner model
+cp_ms_fit <-  mcp(
+  ## A model with 3 intercepts and abrupt changes in between
+  model = list(
+    d50_med ~ 1,
+    ~ 1,
+    ~ 1
+  ),
+  par_x = 'n_date',
+  ## Dirichlet priors to push the change points away from each other
+  prior = list(
+    cp_1 = "dirichlet(2)",
+    cp_2 = "dirichlet(2)"
+  ),
+  ## Initialize intercept estimates to help the model converge
+  inits = list(int_1 = 600,
+               int_2 = 800,
+               int_3 = 600),
+  data = d50[array == 'Mid-shelf'],
+  cores = 3,
+  chains = 3,
+  iter = 10000
+)
+summary(cp_ms_fit)
 
 
 # Stack density onto previous D50 vis ----
@@ -202,28 +229,43 @@ plot(cp_fit)
 ##  geom_cp_density is not exported, check Github.
 
 ## Aggregate posterior samples
-posts <- do.call(rbind, cp_fit$mcmc_post)
-posts <- data.table(posts)
-posts <- melt(posts[, c('cp_1', 'cp_2')],
+posts_ns <- do.call(rbind, cp_ns_fit$mcmc_post)
+posts_ns <- data.table(posts_ns)
+posts_ns <- melt(posts_ns[, c('cp_1', 'cp_2')],
               measure.vars = c('cp_1', 'cp_2'),
               variable.name = 'cp',
               value.name = 'date')
-posts <- posts[, date := as.Date(round(date) + as.numeric(min(d50$date)))]
+posts_ns <- posts_ns[, ':='(date = as.Date(round(date) + as.numeric(min(d50$date))),
+                      array = 'Nearshore')]
 
 
+posts_ms <- do.call(rbind, cp_ms_fit$mcmc_post)
+posts_ms <- data.table(posts_ms)
+posts_ms <- melt(posts_ms[, c('cp_1', 'cp_2')],
+                  measure.vars = c('cp_1', 'cp_2'),
+                  variable.name = 'cp',
+                  value.name = 'date')
+posts_ms <- posts_ms[, ':='(date = as.Date(round(date) + as.numeric(min(d50$date))),
+                              array = 'Mid-shelf')]
 
+posts <- rbind(
+  posts_ns,
+  posts_ms
+)
 
 
 ## Plot
-d50_agg_plot <-
-  ggplot(data = d50[array == 'Inner']) +
-  geom_ribbon(aes(x = date, ymin = d50_lci, ymax = d50_uci),
-              fill = 'gray') +
+d50_plot <-
+  ggplot(data = d50) +
+  geom_ribbon(aes(x = date, ymin = d50_lci, ymax = d50_uci, fill = array)) +
   geom_line(aes(x = date, y = d50_med), size = 0) +
   labs(x = NULL, y = 'Distance at 50% detectability (m)') +
+  facet_wrap(~array, ncol = 1, strip.position = 'right') +
+  scale_fill_manual(values = c('#0072B2', '#D55E00')) +
   coord_cartesian(ylim = c(0, 1250), expand = F) +
   scale_x_date(date_breaks = 'month', date_labels = '%b', expand = c(0, 0)) +
-  theme_bw()
+  theme_bw() +
+  theme(legend.position = 'none')
 
 ## Grab y axis limits from the time series plot
 base_lims <-
@@ -231,51 +273,57 @@ base_lims <-
   # ggplot_build(d50_agg_plot)$layout$panel_scales_y[[1]]$limits
 
   ## Un-comment if using coord_cartesian above
-  ggplot_build(d50_agg_plot)$plot$coordinates$limits$y
+  ggplot_build(d50_plot)$plot$coordinates$limits$y
 
-# TS <-
-  d50_agg_plot +
+compiled_plot <-
+  d50_plot +
   ggplot2::stat_density(aes(x = date,
                             # scale to 20% y axis range
                             y = ..scaled.. * diff(base_lims) * 0.2 - 1e-13,
                             group = cp),
-                        data = posts, color = 'brown', size = 0,
+                        data = posts, color = 'brown', size = 0.3,
                         position = "identity",
                         geom = "line",
-                        show.legend = FALSE)
-+
-  theme(axis.text.x = element_text(angle = 30, hjust = 1),
-        axis.title.y = element_text(margin = margin(0, 0, -3, 0)),
-        plot.margin = unit(c(0.1, 0.05, 0, 0.1), 'mm'),
-        axis.ticks = element_line(size = 0))
+                        show.legend = FALSE) +
+  theme(axis.text.y = element_text(size = 5, hjust = 1, angle = 30,margin = margin(r = 0.5)),
+        axis.text.x = element_text(size = 5, margin = margin(t = 0)),
+        axis.title.y = element_text(size = 6, margin = margin(0, 0, -3, 0)),
+        plot.margin = unit(c(0.6, 0.05, 0, 0.1), 'mm'),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major = element_line(size = 0),
+        axis.ticks = element_line(size = 0),
+        strip.background = element_blank(),
+        strip.text = element_text(size = 6, margin = margin(0, 0, 0.1, 0)))
 
 
 
 # Create and append histogram ----
-hist <- ggplot() +
-  geom_histogram(data= d50_ran, aes(y = d50, fill = array),
-                 binwidth = 50,
-                 position = 'dodge',
-                 show.legend = F) +
-  scale_fill_manual(values = c('#D55E00', '#0072B2')) +
-  scale_y_continuous(limits = c(0, 1100), expand = c(0, 0)) +
-  scale_x_continuous(limits = c(0, 60), expand = c(0,0), breaks = seq(0, 60, 20)) +
-  labs(x = 'Count', y = NULL) +
-  theme_minimal() +
-  theme(axis.text.y = element_blank(),
-        # axis.text.x = element_text(size = 6),
-        axis.title.x = element_text(margin =  margin(-3,0,0,0)),
-        panel.grid.minor.x = element_blank(),
-        plot.margin = unit(c(0.05, 0.05, 0, 0.05), 'mm'))
+# hist <- ggplot() +
+#   geom_histogram(data= d50_ran, aes(y = d50, fill = array),
+#                  binwidth = 50,
+#                  position = 'dodge',
+#                  show.legend = F) +
+#   scale_fill_manual(values = c('#D55E00', '#0072B2')) +
+#   scale_y_continuous(limits = c(0, 1100), expand = c(0, 0)) +
+#   scale_x_continuous(limits = c(0, 60), expand = c(0,0), breaks = seq(0, 60, 20)) +
+#   labs(x = 'Count', y = NULL) +
+#   theme_minimal() +
+#   theme(axis.text.y = element_blank(),
+#         # axis.text.x = element_text(size = 6),
+#         axis.title.x = element_text(margin =  margin(-3,0,0,0)),
+#         panel.grid.minor.x = element_blank(),
+#         plot.margin = unit(c(0.05, 0.05, 0, 0.05), 'mm'))
 
 
-tiff("range test/manuscript/figures/Figure4.tif",
+tiff("range test/manuscript/revisions/figures/Figure4.tif",
      width = 85, height = 40, units = 'mm', compression = 'lzw', res = 600,
      pointsize = 10)
 
-TS + hist + plot_layout(widths = c(4, 1)) &
-  theme(panel.grid = element_line(size = 0),
-        axis.title = element_text(size = 6),
-        axis.text = element_text(size = 6))
+# TS + hist + plot_layout(widths = c(4, 1)) &
+#   theme(panel.grid = element_line(size = 0),
+#         axis.title = element_text(size = 6),
+#         axis.text = element_text(size = 6))
+
+compiled_plot
 
 dev.off()
