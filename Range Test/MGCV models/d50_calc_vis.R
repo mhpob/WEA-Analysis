@@ -257,11 +257,11 @@ posts <- rbind(
 ## Plot
 d50_plot <-
   ggplot(data = d50) +
-  geom_ribbon(aes(x = date, ymin = d50_lci, ymax = d50_uci, fill = array)) +
-  geom_line(aes(x = date, y = d50_med), size = 0) +
+  geom_ribbon(aes(x = date, ymin = d50_lci, ymax = d50_uci), fill = 'gray63') +
+  geom_line(aes(x = date, y = d50_med, color = array), size = 0.3) +
   labs(x = NULL, y = 'Distance at 50% detectability (m)') +
   facet_wrap(~array, ncol = 1, strip.position = 'right') +
-  scale_fill_manual(values = c('#0072B2', '#D55E00')) +
+  scale_color_manual(values = c('#0072B2', '#D55E00')) +
   coord_cartesian(ylim = c(0, 1250), expand = F) +
   scale_x_date(date_breaks = 'month', date_labels = '%b', expand = c(0, 0)) +
   theme_bw() +
@@ -290,8 +290,10 @@ compiled_plot <-
         axis.title.y = element_text(size = 6, margin = margin(0, 0, -3, 0)),
         plot.margin = unit(c(0.6, 0.05, 0, 0.1), 'mm'),
         panel.grid.minor.y = element_blank(),
-        panel.grid.major = element_line(size = 0),
-        axis.ticks = element_line(size = 0),
+        panel.grid.major = element_line(size = 0.3),
+        panel.grid.minor.x = element_line(size = 0.1),
+        axis.ticks = element_line(size = 0.1),
+        axis.ticks.length = unit(0.5, 'mm'),
         strip.background = element_blank(),
         strip.text = element_text(size = 6, margin = margin(0, 0, 0.1, 0)))
 
@@ -314,10 +316,10 @@ compiled_plot <-
 #         panel.grid.minor.x = element_blank(),
 #         plot.margin = unit(c(0.05, 0.05, 0, 0.05), 'mm'))
 
+library(ragg)
 
-tiff("range test/manuscript/revisions/figures/Figure4.tif",
-     width = 85, height = 40, units = 'mm', compression = 'lzw', res = 600,
-     pointsize = 10)
+agg_tiff("range test/manuscript/revisions/figures/Figure4.tif",
+     width = 85, height = 40, units = 'mm', compression = 'lzw', res = 600)
 
 # TS + hist + plot_layout(widths = c(4, 1)) &
 #   theme(panel.grid = element_line(size = 0),
