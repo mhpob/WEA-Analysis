@@ -306,11 +306,25 @@ coast[, array := 'Nearshore']
 ## Plot
 d50_plot <-
   ggplot(data = d50) +
+
+  # D50 time series
   geom_ribbon(aes(x = date, ymin = d50_lci, ymax = d50_uci), fill = 'gray63') +
   geom_line(aes(x = date, y = d50_med, color = array), size = 0.3) +
   labs(x = NULL, y = 'Distance at 50% detectability (m)') +
   facet_wrap(~array, ncol = 1, strip.position = 'right') +
   scale_color_manual(values = c('#0072B2', '#D55E00')) +
+
+  # Label receiver tending
+  geom_rug(
+    data = data.table(
+      date = as.Date(c('2018-04-11', '2018-08-08',  '2018-08-09')),
+      array = 'Nearshore'
+    ),
+    aes(x = date), length = unit(0.1, "npc"),
+    size = 0.11, color = 'red', linetype = 'dashed',
+    inherit.aes = T,
+    show.legend = F,
+    sides = 't', outside = T) +
 
   # Wind rug
   geom_rug(data = coast[max >= 17.2],
