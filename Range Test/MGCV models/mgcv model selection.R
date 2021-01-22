@@ -1,5 +1,5 @@
 # Packages ----
-library(mgcv)
+library(data.table); library(mgcv)
 
 
 
@@ -145,20 +145,25 @@ qbn_hack <- function (link = "logit") {
 
 
 # Data ----
-data <- readRDS('data and imports/rangetest_median_sitespec.RDS')
-data <- data[data$distance > 0 & data$distance < 2400,]
-names(data) <- gsub(' ', '_', tolower(names(data)))
-data$array <- as.factor(gsub(' ', '', data$array))
-data$station <- as.factor(data$station)
-data$freq <- data$success / (data$success + data$fail)
-data$wgt <- (data$success + data$fail) / mean((data$success + data$fail))
-data$date <- as.factor(data$date)
-# data$cp <- ifelse(as.Date(data$date) <= '2018-05-05' | as.Date(data$date) >= '2018-09-07', F, T)
+data <- data.table(
+  readRDS('data and imports/rangetest_median_sitespec.RDS')
+)
+data <- data[distance > 0 & distance < 2400]
 
-data <- data[order(data$station, data$distance, data$date),]
-data$ts.start <- ifelse(data$date == '2017-12-21' |
-                          (data$date == '2018-08-08' & data$station == 'AN3' & data$distance == 800) |
-                          (data$date == '2018-08-08' & data$station == 'AN3_250' & data$distance == 550), T, F)
+setnames(data, gsub(' ', '_', tolower(names(data))))
+
+data[, ':='(array = as.factor(gsub(' ', '', array)),
+            station = as.factor(station),
+            freq = success / (success + fail),
+            wgt = (success + fail) / mean(success + fail),
+            date = as.factor(date),
+            ts.start = fifelse(date == '2017-12-21' |
+                                 (date == '2018-08-08' & station == 'AN3' & distance == 800) |
+                                 (date == '2018-08-08' & station == 'AN3_250' & distance == 550),
+                               T, F))]
+
+setorder(data, station, distance, date)
+
 
 # set seed for CV reproducibility; number reflects internal ABIT ms number
 seed <- 2000031
