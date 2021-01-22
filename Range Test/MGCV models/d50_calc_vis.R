@@ -362,32 +362,11 @@ compiled_plot <-
         strip.background = element_blank(),
         strip.text = element_text(size = 6, margin = margin(0, 0, 0.1, 0)))
 
-# Create and append histogram ----
-# hist <- ggplot() +
-#   geom_histogram(data= d50_ran, aes(y = d50, fill = array),
-#                  binwidth = 50,
-#                  position = 'dodge',
-#                  show.legend = F) +
-#   scale_fill_manual(values = c('#D55E00', '#0072B2')) +
-#   scale_y_continuous(limits = c(0, 1100), expand = c(0, 0)) +
-#   scale_x_continuous(limits = c(0, 60), expand = c(0,0), breaks = seq(0, 60, 20)) +
-#   labs(x = 'Count', y = NULL) +
-#   theme_minimal() +
-#   theme(axis.text.y = element_blank(),
-#         # axis.text.x = element_text(size = 6),
-#         axis.title.x = element_text(margin =  margin(-3,0,0,0)),
-#         panel.grid.minor.x = element_blank(),
-#         plot.margin = unit(c(0.05, 0.05, 0, 0.05), 'mm'))
 
 library(ragg)
 
 agg_tiff("range test/manuscript/revisions/figures/Figure4.tif",
      width = 85, height = 40, units = 'mm', compression = 'lzw', res = 600)
-
-# TS + hist + plot_layout(widths = c(4, 1)) &
-#   theme(panel.grid = element_line(size = 0),
-#         axis.title = element_text(size = 6),
-#         axis.text = element_text(size = 6))
 
 compiled_plot
 
