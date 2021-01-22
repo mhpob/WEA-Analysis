@@ -129,15 +129,18 @@ ggplot() +
            aes(x = dt), sides = 't', alpha = 0.5, color = '#0072B2',
            inherit.aes = F, show.legend = F) +
 
+  annotate('text', x = -0.5, y = 0.9, label = 'A') +
+
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0), limits = c(0, 1)) +
   scale_fill_manual(values = c('#0072B2', '#D55E00')) +
-  labs(x = 'ΔT (°C)', y = 'Predicted detectability', fill = NULL) +
+  labs(x = '',
+       y = ' ', fill = NULL) +
   theme_bw() +
   theme(axis.text = element_text(size = 10),
         axis.title = element_text(size = 12),
-        plot.margin = unit(c(0.09, 0.8, 0.05, 0.1), "cm"),
-        legend.position = c(0.1, 0.8))
+        plot.margin = unit(c(0.09, 0, 0.05, 0.1), "cm"),
+        legend.position = 'none')
 
 
 
@@ -222,15 +225,18 @@ hi_dt <-
            aes(x = dt), sides = 't', alpha = 0.5, color = '#0072B2',
            inherit.aes = F, show.legend = F) +
 
+  annotate('text', x = -0.5, y = 0.9, label = 'B') +
+
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0), limits = c(0, 1)) +
   scale_fill_manual(values = c('#0072B2', '#D55E00')) +
-  labs(x = 'ΔT (°C)', y = NULL, fill = NULL) +
+  labs(x = 'ΔT (°C)                                                                      ',
+       y = NULL, fill = NULL) +
   theme_bw() +
   theme(axis.text = element_text(size = 10),
         axis.title = element_text(size = 12),
-        plot.margin = unit(c(0.09, 0.8, 0.05, 0.1), "cm"),
-        legend.position = c(0.1, 0.8))
+        plot.margin = unit(c(0.09, 0.01, 0.05, 0.01), "cm"),
+        legend.position = 'none')
 
 
 
@@ -239,117 +245,224 @@ hi_dt <-
 
 
 
-## zero strat ----
+## 5deg strat ----
 newdata <- rbind(
-  data.frame(
+  data.table(
     array = 'Inner',
     station = 'IS2',
-    dt = 0,
-    average_noise = seq(min(data[data$array == 'Inner',]$average_noise),
-                        max(data[data$array == 'Inner',]$average_noise),
-                        length.out = 100),
+    dt = 5,
+    average_noise = seq(data[array == 'Inner', min(average_noise)],
+                        data[array == 'Inner', max(average_noise)], length.out = 100),
     distance = 800
   ),
-  data.frame(
+  data.table(
     array = 'MDWEA',
     station = 'AN3',
-    dt = 0,
-    average_noise = seq(min(data[data$array == 'MDWEA',]$average_noise),
-                        max(data[data$array == 'MDWEA',]$average_noise),
-                        length.out = 100),
+    dt = 5,
+    average_noise = seq(data[array == 'MDWEA', min(average_noise)],
+                        data[array == 'MDWEA', max(average_noise)], length.out = 100),
     distance = 800
   )
 )
+
 
 preds <- predict(m_ndt,
                  newdata = newdata,
                  type = 'link',
                  se.fit = T,
-                 # terms = 's(dt)')
-                 exclude = 's(station)')
+                 exclude = c('s(station)'))
 
-newdata$pred <- m_ndt$family$linkinv(preds$fit)
-newdata$lci <- m_ndt$family$linkinv(preds$fit - 1.96 * preds$se.fit)
-newdata$uci <- m_ndt$family$linkinv(preds$fit + 1.96 * preds$se.fit)
-
+newdata[, ':='(pred = m_ndt$family$linkinv(preds$fit),
+               lci = m_ndt$family$linkinv(preds$fit - 1.96 * preds$se.fit),
+               uci = m_ndt$family$linkinv(preds$fit + 1.96 * preds$se.fit))]
 
 
+newdata_noarray <- data.table(
+  array = 'MDWEA',
+  station = 'AN3',
+  dt = 5,
+  average_noise = seq(data[, min(average_noise)],
+                      data[, max(average_noise)], length.out = 100),
+  distance = 800
+)
 
-ggplot(data = newdata) +
-  geom_ribbon(aes(x = average_noise, ymin = lci, ymax = uci, fill = array), alpha = 0.8) +
-  geom_line(aes(x = average_noise, y = pred, group = array), color = 'white') +
-  geom_rug(data = unique(data.table(data)[array == 'Inner',], by = 'average_noise'),
-           aes(x = average_noise, color = array), alpha = 0.5) +
-  geom_rug(data = unique(data.table(data)[array == 'MDWEA',], by = 'average_noise'),
-           aes(x = average_noise, color = array), sides = 't', alpha = 0.5) +
+preds <- predict(m_ndt,
+                 newdata = newdata_noarray,
+                 type = 'link',
+                 se.fit = T,
+                 exclude = c('s(station)', 's(average_noise,array)', 's(dt,array)'))
+
+newdata_noarray[, ':='(pred = m_ndt$family$linkinv(preds$fit),
+                       lci = m_ndt$family$linkinv(preds$fit - 1.96 * preds$se.fit),
+                       uci = m_ndt$family$linkinv(preds$fit + 1.96 * preds$se.fit),
+                       array = 'Combined')]
+
+
+newdata <- rbind(newdata, newdata_noarray)
+
+newdata[, array := fcase(array == 'Inner',
+                         'Nearshore',
+                         array == 'MDWEA',
+                         'Mid-shelf',
+                         array == 'Combined',
+                         'Combined')]
+
+
+strat_noise <-
+  ggplot() +
+  geom_ribbon(data = newdata[array == 'Combined'],
+              aes(x = average_noise, ymin = lci, ymax = uci), fill = 'lightgray',
+              show.legend = F) +
+  geom_ribbon(data = newdata[array != 'Combined'],
+              aes(x = average_noise, ymin = lci, ymax = uci, fill = array), alpha = 0.5) +
+  geom_line(data = newdata, aes(x = average_noise, y = pred, color = array),
+            show.legend = F)   +
+
+  scale_color_manual(values = c('black', 'white', 'white')) +
+  geom_rug(data = unique(data[array == 'Inner' &
+                                dt %between% c(3,7),],
+                         by = 'average_noise'),
+           aes(x = average_noise), alpha = 0.5, color = '#D55E00',
+           inherit.aes = F, show.legend = F) +
+  geom_rug(data = unique(data[array == 'MDWEA' &
+                                dt %between% c(3,7),],
+                         by = 'average_noise'),
+           aes(x = average_noise), sides = 't', alpha = 0.5, color = '#0072B2',
+           inherit.aes = F, show.legend = F) +
+
+  annotate('text', x = 200, y = 0.9, label = 'C') +
+
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0), limits = c(0, 1)) +
-  scale_fill_manual(values = c('#D55E00', '#0072B2')) +
-  labs(x = 'Ambient noise (mV)', y = 'Predicted detectability') +
+  scale_fill_manual(values = c('#0072B2', '#D55E00')) +
+  labs(x = '',
+       y = '                                                      Predicted detectability', fill = NULL) +
   theme_bw() +
   theme(axis.text = element_text(size = 10),
         axis.title = element_text(size = 12),
-        plot.margin = unit(c(0.05, 0.8, 0.05, 0.1), "cm"))
+        plot.margin = unit(c(0.09, 0, 0, 0.1), "cm"),
+        legend.position = 'none')
 
 
 ## zero strat ----
 newdata <- rbind(
-  data.frame(
+  data.table(
     array = 'Inner',
     station = 'IS2',
-    dt = 5,
-    average_noise = seq(min(data[data$array == 'Inner',]$average_noise),
-                        max(data[data$array == 'Inner',]$average_noise),
-                        length.out = 100),
+    dt = 0,
+    average_noise = seq(data[array == 'Inner', min(average_noise)],
+                        data[array == 'Inner', max(average_noise)], length.out = 100),
     distance = 800
   ),
-  data.frame(
+  data.table(
     array = 'MDWEA',
     station = 'AN3',
-    dt = 5,
-    average_noise = seq(min(data[data$array == 'MDWEA',]$average_noise),
-                        max(data[data$array == 'MDWEA',]$average_noise),
-                        length.out = 100),
+    dt = 0,
+    average_noise = seq(data[array == 'MDWEA', min(average_noise)],
+                        data[array == 'MDWEA', max(average_noise)], length.out = 100),
     distance = 800
   )
 )
+
 
 preds <- predict(m_ndt,
                  newdata = newdata,
                  type = 'link',
                  se.fit = T,
-                 # terms = 's(dt)')
-                 exclude = 's(station)')
+                 exclude = c('s(station)'))
 
-newdata$pred <- m_ndt$family$linkinv(preds$fit)
-newdata$lci <- m_ndt$family$linkinv(preds$fit - 1.96 * preds$se.fit)
-newdata$uci <- m_ndt$family$linkinv(preds$fit + 1.96 * preds$se.fit)
-
+newdata[, ':='(pred = m_ndt$family$linkinv(preds$fit),
+               lci = m_ndt$family$linkinv(preds$fit - 1.96 * preds$se.fit),
+               uci = m_ndt$family$linkinv(preds$fit + 1.96 * preds$se.fit))]
 
 
+newdata_noarray <- data.table(
+  array = 'MDWEA',
+  station = 'AN3',
+  dt = 0,
+  average_noise = seq(data[, min(average_noise)],
+                      data[, max(average_noise)], length.out = 100),
+  distance = 800
+)
 
-ggplot(data = newdata) +
-  geom_ribbon(aes(x = average_noise, ymin = lci, ymax = uci, fill = array), alpha = 0.8) +
-  geom_line(aes(x = average_noise, y = pred, group = array), color = 'white') +
-  geom_rug(data = unique(data.table(data)[array == 'Inner',], by = 'average_noise'),
-           aes(x = average_noise, color = array), alpha = 0.5) +
-  geom_rug(data = unique(data.table(data)[array == 'MDWEA',], by = 'average_noise'),
-           aes(x = average_noise, color = array), sides = 't', alpha = 0.5) +
+preds <- predict(m_ndt,
+                 newdata = newdata_noarray,
+                 type = 'link',
+                 se.fit = T,
+                 exclude = c('s(station)', 's(average_noise,array)', 's(dt,array)'))
+
+newdata_noarray[, ':='(pred = m_ndt$family$linkinv(preds$fit),
+                       lci = m_ndt$family$linkinv(preds$fit - 1.96 * preds$se.fit),
+                       uci = m_ndt$family$linkinv(preds$fit + 1.96 * preds$se.fit),
+                       array = 'Combined')]
+
+
+newdata <- rbind(newdata, newdata_noarray)
+
+newdata[, array := fcase(array == 'Inner',
+                         'Nearshore',
+                         array == 'MDWEA',
+                         'Mid-shelf',
+                         array == 'Combined',
+                         'Combined')]
+
+
+nostrat_noise <-
+  ggplot() +
+  geom_ribbon(data = newdata[array == 'Combined'],
+              aes(x = average_noise, ymin = lci, ymax = uci), fill = 'lightgray',
+              show.legend = F) +
+  geom_ribbon(data = newdata[array != 'Combined'],
+              aes(x = average_noise, ymin = lci, ymax = uci, fill = array), alpha = 0.5) +
+  geom_line(data = newdata, aes(x = average_noise, y = pred, color = array),
+            show.legend = F)   +
+
+  scale_color_manual(values = c('black', 'white', 'white')) +
+  geom_rug(data = unique(data[array == 'Inner' &
+                                dt %between% c(-1,1),],
+                         by = 'average_noise'),
+           aes(x = average_noise), alpha = 0.5, color = '#D55E00',
+           inherit.aes = F, show.legend = F) +
+  geom_rug(data = unique(data[array == 'MDWEA' &
+                                dt %between% c(-1,1),],
+                         by = 'average_noise'),
+           aes(x = average_noise), sides = 't', alpha = 0.5, color = '#0072B2',
+           inherit.aes = F, show.legend = F) +
+
+  annotate('text', x = 200, y = 0.9, label = 'D') +
+
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0), limits = c(0, 1)) +
-  scale_fill_manual(values = c('#D55E00', '#0072B2')) +
-  labs(x = 'Ambient noise (mV)', y = 'Predicted detectability') +
+  scale_fill_manual(values = c('#0072B2', '#D55E00')) +
+  labs(x = 'Ambient noise (mV)                                                                       ',
+       y = '', fill = NULL) +
   theme_bw() +
   theme(axis.text = element_text(size = 10),
         axis.title = element_text(size = 12),
-        plot.margin = unit(c(0.05, 0.8, 0.05, 0.1), "cm"))
+        plot.margin = unit(c(0.09, 0.01, 0, 0.01), "cm"),
+        legend.position = c(0.8, 0.75),
+        legend.margin = margin(t = 0))
 
 
+library(ragg)
+# tiff('range test/manuscript/figures/Figure3.tif', compression = 'lzw', res = 300,
+#      width = 170, height = 160, units = 'mm', pointsize = 6)
+#
+# te_vis / slice_vis + plot_layout(heights = c(2, 1)) & theme(axis.text = element_text(size = 10),
+#                                                             axis.title = element_text(size = 12),
+#                                                             legend.text = element_text(size = 10))
+#
+# dev.off()
+
+agg_tiff('range test/manuscript/revisions/figures/figure3.tif', compression = 'lzw',
+         res = 300, width = 170, height = 120, units = 'mm')
+
+med_dt + hi_dt +
+  strat_noise + nostrat_noise +
+  plot_layout(ncol = 2)
 
 
-
-
-
+dev.off()
 
 # Tensor product prediction ----
 # new_data_te <- expand.grid(
