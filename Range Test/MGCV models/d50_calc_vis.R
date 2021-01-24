@@ -254,6 +254,13 @@ posts <- rbind(
   posts_ms
 )
 
+## Misc. stats
+### Median and credible interval
+posts[, .(median = median(date),
+          lower = as.Date(quantile(as.numeric(date), 0.025)),
+          upper = as.Date(quantile(as.numeric(date), 0.975))),
+      by = c('array', 'cp')]
+
 
 # Data for wind rug ----
 ndbc_dl <- function(url){
