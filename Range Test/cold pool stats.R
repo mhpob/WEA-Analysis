@@ -29,7 +29,7 @@ ggplot() +
 cp_form <- data[date %between% c('2018-04-28', '2018-05-07')]
 
 ggplot() +
-  geom_line(data = cp_start, aes(x = date, y = dt, color = array)) +
+  geom_line(data = cp_form, aes(x = date, y = dt, color = array)) +
   scale_x_date(date_breaks = 'day') +
   scale_y_continuous(breaks = -2:20) +
   theme(axis.text.x = element_text(angle = 45))
