@@ -16,4 +16,4 @@ Rothermel ER, Balazik MT, Best JE, Breece MW, Fox DA, Gahagan BI, et al. (2020) 
 
 Rothermel, Ella; O'Brien, Michael; Secor, David (2020), Comparative migration ecology of striped bass and Atlantic sturgeon in the US Southern Mid-Atlantic Bight flyway, Dryad, Dataset, https://doi.org/10.5061/dryad.6hdr7sqx3
 
-O’Brien MHP, Secor DH (in review). Influence of thermal stratification and storms on acoustic telemetry detection efficiency: a year-long test in the US Southern Mid-Atlantic Bight. Preprint available: https://doi.org/10.21203/rs.3.rs-64036/v1. 
+O’Brien, M.H.P., Secor, D.H. Influence of thermal stratification and storms on acoustic telemetry detection efficiency: a year-long test in the US Southern Mid-Atlantic Bight. Anim Biotelemetry 9, 8 (2021). https://doi.org/10.1186/s40317-021-00233-3
