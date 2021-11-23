@@ -1,0 +1,153 @@
+---
+title: "Weekly residence model"
+subtitle: "Quasibinomial"
+author: "Mike O'Brien"
+date: "9/1/2021"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(data.table); library(mgcv); library(itsadug)
+
+basswl <- fread('bassweek.csv')
+basswl[, Origin := factor(Origin)]
+basswl[, transmitter := factor(transmitter)]
+
+# Need to label where each fish's time series starts for the AR1 model
+basswl[, ar_start := fifelse(time == 1, T, F)]
+basswl[, trials := 7]
+```
+
+The following fits models with autocorrelation parameters ($\rho$) from
+0 to 0.999 and retains the AIC returned.
+
+Note the use of `scale = -1`. This this tricks `mgcv::bam` into fitting
+a scale parameter, meaning that we are technically fitting a
+quasibinomial model. If you use the `quasibinomial` function directly,
+AIC is not reported since it technically is a quasilikelihood that
+shouldn't be compared to other quasilikelihoods. The R creators are
+purists and don't want you to see that the likelihood is still
+calculated behind the curtain and that AIC can still be pulled out.
+
+I also increased k in `s(WE)` to 28 since the cyclic spline seems to
+take 2 degrees of freedom. Using 28 rather than 27 gives us the max of
+26 knots that we were looking for.
+
+```{r eval=FALSE}
+search <- sapply(seq(0, 0.999, 0.001), function(x){
+  AIC(mgcv::bam(cbind(freq, trials) ~
+                  Origin + 
+                  s(SST, bs='tp', k = 11) +
+                  s(WE, bs='cc', k = 28) +
+                  s(CHLA, bs= 'tp', k = 6) +
+                  s(transmitter, bs = 're'),
+                rho = x, AR.start = ar_start,
+                family = binomial, discrete = T,
+                
+                scale = -1,
+                
+                data=basswl))
+})
+```
+
+It comes out that $\rho$ = 0.865 is the optimal value according to AIC,
+so if you want to run it yourself, I'd change the sequence range to
+something like `seq(0.85, 0.87, 0.001)` to make it go faster.
+
+```{r}
+search <- sapply(seq(0.86, 0.87, 0.001), function(x){
+  AIC(mgcv::bam(cbind(freq, trials) ~
+                  Origin + 
+                  s(SST, bs='tp', k = 11) +
+                  s(WE, bs='cc', k = 28) +
+                  s(CHLA, bs= 'tp', k = 6) +
+                  s(transmitter, bs = 're'),
+                rho = x, AR.start = ar_start,
+                family = binomial, discrete = T,
+                
+                scale = -1,
+                
+                data=basswl))
+})
+```
+
+Return the best value of $\rho$ (note that I did change the sequence
+range once I had an idea of where $\rho$ was to make it run faster):
+
+```{r}
+seq(0.86, 0.87, 0.001)[which.min(search)]
+```
+
+And now, run the model:
+
+```{r}
+model <- bam(cbind(freq, trials) ~
+               Origin +
+               s(SST, bs='tp', k = 11) +
+               s(WE, bs='cc', k = 28) +
+               s(CHLA, bs= 'tp', k = 6) +
+               s(transmitter, bs = 're'),
+             rho = 0.865, AR.start = basswl$ar_start,
+             family = binomial, discrete = T, 
+             scale = -1, data=basswl)
+
+summary(model)
+```
+
+Note that "Scale est." is much less than 1. This indicates that that the
+data are, indeed, underdispersed. If you run this using the binomial
+family without `scale = -1`, you will see that "Scale est." is fixed at
+1.
+
+The adjusted R^2^ and deviance explained are obviously pretty funky, but
+I think I can calculate those by hand later.
+
+CHLA is basically linear, so re-running without a smooth for that term:
+
+```{r}
+model <- bam(cbind(freq, trials) ~
+               Origin +
+               s(SST, bs='tp', k = 11) +
+               s(WE, bs='cc', k = 28) +
+               CHLA +
+               s(transmitter, bs = 're'),
+             rho = 0.865, AR.start = basswl$ar_start,
+             family = binomial, discrete = T, 
+             scale = -1, data=basswl)
+
+summary(model)
+```
+
+```{r}
+plot(model, scale = 0, pages = 1)
+```
+
+You can see from the random subset of fish below that there's still some
+autocorrelation, but we've done the best we probably can!
+
+```{r}
+acf_resid(model, split_pred = 'AR.start', n = 6)
+```
+
+Looks like the Delaware and Hudson may be different...
+
+```{r}
+plot_parametric(model,
+                pred = list(Origin = levels(basswl$Origin)),
+                parametricOnly = T)
+```
+
+...and they seem to be!
+
+```{r}
+wald_gam(model,
+         comp = list(Origin = levels(basswl$Origin)),
+         print.output = T)
+```
